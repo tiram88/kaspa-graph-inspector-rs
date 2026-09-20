@@ -1,6 +1,7 @@
 # VSPC processing
 
-> This document is a focused extraction of the authoritative 17 September 2026 architecture handoff. Its settled semantics are unchanged.
+> Focused extraction; the current consolidated contract is
+> [handoff-2026-09-20.md](handoff-2026-09-20.md), which prevails on conflicts.
 
 ## VSPC semantics and types — settled
 
@@ -29,13 +30,9 @@ destination =
 Every dispatched change is nonempty. An empty V2 response is synchronization
 information, not a VSPC event.
 
-Pending/ready representation:
+Pending changes are stored as `VspcChange` values directly. Ready representation:
 
 ```rust
-struct PendingVspcChange {
-    change: VspcChange,
-}
-
 struct ReadyVspcChange {
     source: VspcPoint,
     destination: VspcPoint,
@@ -55,7 +52,7 @@ Resolution handles both event-before-block and block-before-event. Use:
 - hash -> recent `PersistedBlock` history;
 - `ConsensusOrder -> hash` for ordered pruning/history.
 
-This dual index is intentional. A `HashMap<BlockHash, Vec<PendingVspcChange>>`
+This dual index is intentional. A `HashMap<BlockHash, Vec<VspcChange>>`
 alone loses multi-dependency and sequencing structure.
 
 Committed VSPC sources and destinations are monotonic. For committed events:
@@ -66,13 +63,15 @@ ready[n].source == ready[n - 1].destination
 ```
 
 Incoming competing candidates do not need to be monotonic before selection.
-After each commit, prune history through the committed destination while
-retaining the current sink separately.
+Before Catchup, prune history entries with order strictly less than the
+committed destination. Do not prune during Catchup. On Catchup→Live and after
+each Live commit, prune entries with order strictly less than the committed
+destination, retaining the sink entry.
 
 ### VSPC readiness at the PP boundary
 
-Any synthetic or notification change can be processed, even during unsealed
-Rebuild cycle 1, when both hold:
+Any synthetic or notification change can be processed, even during `PreSeal`,
+when both hold:
 
 ```text
 CHAIN_READY: ready.source == committed_vspc_sink
@@ -106,4 +105,3 @@ which naturally avoids a destination clone at the caller.
 
 There is no dedicated committed-sink table. It is derived from materialized
 blocks with `is_in_vspc = true`.
-

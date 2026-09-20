@@ -1,6 +1,7 @@
 # KGI v2 architecture overview
 
-> This document is a focused extraction of the authoritative 17 September 2026 architecture handoff. Its settled semantics are unchanged.
+> Focused extraction; the current consolidated contract is
+> [handoff-2026-09-20.md](handoff-2026-09-20.md), which prevails on conflicts.
 
 ## Purpose and authority
 
@@ -73,7 +74,7 @@ single transient processing task.
 
 ```text
 Supervisor
-├── Arc<NodeClient>
+├── Arc<NodeService>
 ├── Arc<StorageService>
 └── Arc<ResyncEngine>
     ├── Arc<BlockProcessor>
@@ -92,7 +93,7 @@ ownership contracts remain clear.
 Notifications never pass through `ResyncEngine`:
 
 ```text
-NodeClient::NotificationRouter
+NodeService::NotificationRouter
 ├── BlockAdded ---------> BlockProcessor notification channel
 └── VirtualChainChanged -> VspcProcessor notification channel
 ```
@@ -141,4 +142,3 @@ height_group_index  -> slot
 height_groups       -> levels
 levels.size remains size
 ```
-

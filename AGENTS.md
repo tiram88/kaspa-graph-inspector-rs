@@ -7,18 +7,19 @@ This repository uses three distinct collaboration roles. The repository is the d
 Before changing or reviewing this repository, read in this order:
 
 1. This `AGENTS.md`.
-2. `docs/architecture/overview.md`.
-3. Every focused document in `docs/architecture/` relevant to the work.
+2. `docs/architecture/handoff-2026-09-20.md` (the current consolidated contract).
+3. `docs/architecture/overview.md` and every focused architecture document relevant to the work.
 4. Accepted ADRs in `docs/decisions/`.
 5. `docs/open-questions.md` when the work touches an unresolved choice.
 6. `docs/implementation-status.md` and relevant reports in `docs/reviews/` for non-normative project state.
 
-`docs/architecture/handoff-2026-09-17.md` is the verbatim source handoff for this bootstrap. Consult it when checking completeness, provenance, or a suspected conflict.
+`docs/architecture/handoff-2026-09-17.md` is the verbatim source handoff for the original bootstrap. Consult it for provenance, but its superseded wording is not the current contract. Focused documents were extracted from that bootstrap and have not all been updated after the 20 September review. Where they differ, the later accepted decisions recorded in `handoff-2026-09-20.md` control; flag any ambiguity rather than blending conflicting rules.
 
 Normative precedence is:
 
 ```text
-accepted architecture and ADRs
+20 September consolidated handoff and later accepted ADRs
+    > older focused architecture where superseded
     > implementation and tests
     > implementation-status and review notes
 ```

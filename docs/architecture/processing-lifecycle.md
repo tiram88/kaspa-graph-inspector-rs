@@ -1,13 +1,14 @@
 # Processing lifecycle and recovery
 
-> This document is a focused extraction of the authoritative 17 September 2026 architecture handoff. Its settled semantics are unchanged.
+> Focused extraction; the current consolidated contract is
+> [handoff-2026-09-20.md](handoff-2026-09-20.md), which prevails on conflicts.
 
 ## Processing session and resource acquisition — settled
 
 ```rust
 struct ProcessingSession {
     rpc: Arc<ValidatedRpcClient>,
-    storage: Arc<ValidatedStorageService>,
+    db: Arc<ValidatedDbClient>,
 }
 ```
 
@@ -19,7 +20,7 @@ Partial acquisition may be retained while waiting for the other resource.
 Before starting, recheck the latest desired recovery and that the engine is
 still idle.
 
-The exact `Arc<ValidatedRpcClient>` and `Arc<ValidatedStorageService>` are
+The exact `Arc<ValidatedRpcClient>` and `Arc<ValidatedDbClient>` are
 passed in `Start` and then through the session to all consumers, including
 DependencyResolver. This guarantees one resource generation per run.
 
@@ -102,7 +103,7 @@ The engine prepares one common structure for Resync and Rebuild:
 ```rust
 struct PreparedSync {
     rpc: Arc<ValidatedRpcClient>,
-    storage: Arc<ValidatedStorageService>,
+    db: Arc<ValidatedDbClient>,
     anchor: MaterializedSyncAnchor,
     boundary_seal_blue_score: u64,
 }
@@ -167,7 +168,7 @@ Conceptual order:
 7. drop `ProcessingSession`;
 8. emit `Deactivated` / enter `Idle`.
 
-On application shutdown: stop engine/processors first, then NodeClient, then
+On application shutdown: stop engine/processors first, then NodeService, then
 StorageService.
 
 
@@ -320,4 +321,3 @@ complex continuous IBD mode for v2.
 
 A low-frequency Live VSPC consistency probe is recorded as a KGI v2.1
 candidate.
-

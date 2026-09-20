@@ -1,10 +1,11 @@
 # Block processing
 
-> This document is a focused extraction of the authoritative 17 September 2026 architecture handoff. Its settled semantics are unchanged.
+> Focused extraction; the current consolidated contract is
+> [handoff-2026-09-20.md](handoff-2026-09-20.md), which prevails on conflicts.
 
 ## PP-boundary policy — settled
 
-For Rebuild cycle 1:
+For a Rebuild in `PreSeal`:
 
 ```text
 boundary_seal_blue_score =
@@ -13,13 +14,13 @@ boundary_seal_blue_score =
 
 This deliberately simple BlueScore approximation is accepted.
 
-Before sealing, cycle-1 blocks are processed in consensus-topological order
+In `PreSeal`, blocks are processed in consensus-topological order
 with `AllowBoundaryIdentities`; missing parents and merge-set identities may be
 outside the retained PP boundary. The materialized retained portion of the PP
 anticone arrives before PP-future blocks that merge it.
 
 The first block with blue score at or above the threshold is processed under
-strict policy. Only after that block commits does BlockProcessor flip to sealed
+strict policy. Only after that block commits does BlockProcessor enter `PostSeal`
 and emit `PpBoundarySealed`.
 
 After sealing, every resync cycle is strict. Before Catchup, a missing
@@ -116,4 +117,3 @@ driven by OrphanManager.
 
 There is no `Satisfied(hash)` queue protocol. `resolution_pending` is a set,
 not a queue or map.
-

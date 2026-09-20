@@ -1,15 +1,16 @@
-# Node connectivity and notification routing
+# NodeService connectivity and notification routing
 
-> This document is a focused extraction of the authoritative 17 September 2026 architecture handoff. Its settled semantics are unchanged.
+> Focused extraction; the current consolidated contract is
+> [handoff-2026-09-20.md](handoff-2026-09-20.md), which prevails on conflicts.
 
-## NodeClient — settled
+## NodeService — settled
 
-`NodeClient` is a permanent autonomous lifecycle worker. It owns connection,
+`NodeService` is a permanent autonomous lifecycle worker. It owns connection,
 reconnection, validation, IBD waiting, and publication of usable connection
 generations.
 
 ```text
-NodeClient lifecycle worker
+NodeService lifecycle worker
     -> connect
     -> validate
     -> wait for node to leave IBD
@@ -17,7 +18,7 @@ NodeClient lifecycle worker
 ```
 
 `ValidatedRpcClient` represents exactly one validated physical connection
-lifetime. Processing code receives this capability, not `NodeClient`.
+lifetime. Processing code receives this capability, not `NodeService`.
 
 Validation requires:
 
@@ -90,8 +91,8 @@ stop both remote subscriptions
 Subscription changes are all-or-nothing. Partial failure makes the connection
 state uncertain and retires the validated handle.
 
-Only NodeClient sees raw rusty-kaspa notification types. The only VSPC payload
-outside NodeClient is:
+Only NodeService sees raw rusty-kaspa notification types. The only VSPC payload
+outside NodeService is:
 
 ```rust
 struct VspcChange {
@@ -102,7 +103,7 @@ struct VspcChange {
 
 ### RPC normalization
 
-`get_blocks(low_hash, include_blocks = true)` is normalized inside NodeClient:
+`get_blocks(low_hash, include_blocks = true)` is normalized inside NodeService:
 
 - raw hash and block vectors must have equal length;
 - the raw response must be nonempty and start with `low_hash`;
@@ -113,4 +114,3 @@ struct VspcChange {
 
 KGI requests full RPC blocks directly. Fetching hashes and then calling
 `GetBlock` one by one has no accepted benefit for this local-node deployment.
-

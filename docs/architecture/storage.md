@@ -1,26 +1,27 @@
 # Storage and block materialization
 
-> This document is a focused extraction of the authoritative 17 September 2026 architecture handoff. Its settled semantics are unchanged.
+> Focused extraction; the current consolidated contract is
+> [handoff-2026-09-20.md](handoff-2026-09-20.md), which prevails on conflicts.
 
 ## Storage lifecycle — settled
 
 `StorageService` is also a permanent autonomous lifecycle worker, symmetrical
-with `NodeClient`:
+with `NodeService`:
 
 ```text
 StorageService
     -> connect and validate schema/configuration
-    -> publish Arc<ValidatedStorageService>
+    -> publish Arc<ValidatedDbClient>
 ```
 
 Supervisor-facing APIs are conceptually:
 
 ```rust
-wait_until_usable() -> Result<Arc<ValidatedStorageService>, StorageWaitError>
+wait_until_usable() -> Result<Arc<ValidatedDbClient>, StorageWaitError>
 shutdown() -> Result<(), StorageError>
 ```
 
-`ValidatedStorageService` is a session-scoped capability. It owns its pool and
+`ValidatedDbClient` is a session-scoped capability. It owns its pool and
 caches. A processing session uses one exact storage generation; it is never
 rebound underneath a running session.
 
@@ -249,4 +250,3 @@ struct PersistedBlock {
 
 Every `PersistedBlock` is non-Genesis and therefore has an unconditional
 selected parent. Genesis is handled only by the special PP/bootstrap path.
-
