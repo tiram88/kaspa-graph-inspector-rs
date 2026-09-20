@@ -1,0 +1,54 @@
+# KGI v2 implementation sequence
+
+Status: planning only. Prepared against architecture baseline `c51559e` on
+20 September 2026. This is a non-normative execution plan; the consolidated
+[architecture handoff](architecture/handoff-2026-09-20.md) and later accepted
+ADRs govern behavior.
+
+## Entry gate
+
+**Do not start production code, migrations, or tests until the architecture
+bootstrap review is resolved and its accepted result is committed as a stable
+baseline.** `c51559e` is committed, but its review is pending. The Review role
+should review that stable commit against `AGENTS.md` and the consolidated
+handoff. The Architecture role should resolve any normative findings in
+focused architecture or ADRs and commit the resulting baseline. Implementation
+then records the reviewed baseline commit in `docs/implementation-status.md`.
+
+The review must cover the new in-process API and Reset/read barrier as well as
+processing, because both are in the accepted v2 scope. The older focused
+documents are useful detail where they agree with the 20 September handoff;
+their superseded wording is not an alternate implementation choice.
+
+## Sequence after the gate
+
+| Step | Work and prerequisite | Completion evidence |
+|---|---|---|
+| 1. Pin interfaces and test references | Select workspace/module layout, dependency revisions, PostgreSQL client and migration tool, and concrete error types. Pin a `rusty-kaspa` revision. Establish Go KGI parity fixtures, a controlled node/RPC fixture, PostgreSQL integration setup, and browser graph fixtures. Define shared types, worker commands, bounded data-channel contracts, graph observer payloads, and a separate acknowledged API Reset control. | A buildable skeleton and fixture tests that exercise chosen upstream RPC and notification assumptions; recorded implementation choices. |
+| 2. Build validated capabilities | Implement `NodeService` and one-connection `ValidatedRpcClient`, RPC validation/normalization, and all-or-nothing notification routing. Implement `StorageService`, schema/network validation, one-generation `ValidatedDbClient`, migrations, and transaction/cache publication rules. These can advance independently once step 1 interfaces are stable. | Connection-generation, network/schema rejection, IBD, subscription failure, GetBlocks normalization, and ambiguous DB commit tests. |
+| 3. Implement persistence invariants | Add identity/materiality lookup, ordered hash interning, transactional block materialization and coordinate allocation, PP rebuild transaction, committed VSPC sink derivation, atomic VSPC coloring and final level DAA scores. Keep ordinary orphans in memory and boundary identities permanent. | PostgreSQL tests for PP `(1,0)`, anticone levels, strict versus PreSeal references, dedup, no boundary promotion, VSPC reorgs, and crash/ambiguous seal outcomes. |
+| 4. Establish API reset safety | Implement the read-only API pool and bounded historical-read admission, cancellation/drain, and acknowledged `Reset`. Prove pre-reset in-flight reads yield one old coherent image or 503, including the chosen PostgreSQL clear strategy. Keep historical reads closed until a coherent new API image is publishable. | PostgreSQL race tests for Reset, concurrent historical reads, rebuild, and any `TRUNCATE` behavior; bounded barrier completion. This step must pass before enabling a runnable rebuild. |
+| 5. Build processor workers | Implement OrphanManager and DependencyResolver, then BlockProcessor's priority/gates/materialization path. Implement VspcProcessor's pending indexes, source/destination continuity, phase-specific pruning and overlap. Route committed graph updates on one ordered channel, with block update before `PersistedBlock` delivery. | Worker tests for topology, cancellation races, priorities, full versus closed channels, PreSeal seal transition, VSPC sequencing, duplicate detection, and observer loss. |
+| 6. Publish the in-process graph API | Implement complete 1000-level HGC snapshot/replay, external parent endpoints, invalidation/reload and GraphEpoch revisions. Benchmark wire formats end to end, then finalize response schema, response-local hash dictionaries, composable depth-independent deltas, SSE cursors, ETags, DAA/window queries, and status. Set bounded API resource budgets and `MAX_WINDOW_DEPTH`. Reopen historical reads only with a coherent new image. | Snapshot/replay, terminal observer loss, VSPC source continuity, delta composition/expiry, stale epoch, slow SSE clients, DAA tie/floor, crossing edges, and API saturation tests. |
+| 7. Integrate recovery lifecycle | Implement ResyncEngine preparation, common GetBlocks/VSPC pump, Catchup/overlap/Live transition, session teardown, and Supervisor recovery intent. Start usable RPC/DB acquisition concurrently. Route rebuild through the tested API Reset acknowledgement before DB clear. | End-to-end Resync, Rebuild, recovery escalation, interruption, retained `--clear-db` intent, session-clone release, and complete-page Live-boundary tests. |
+| 8. Integrate Web behavior and verify release | Adapt the Web graph model to hash identity, SSE cursor catch-up, head-following and fixed-view freeze, DAA anchor behavior, and distance-adaptive updates. Run Go parity, pinned-node, PostgreSQL, browser, recovery, and resource-isolation tests against the complete stack. | A stable reviewable implementation commit/diff, updated implementation status, and evidence for each handoff §19 obligation. |
+
+Steps 5 and 6 may be developed in parallel after their shared observer and
+Reset protocols are fixed, but integration must preserve their causal order.
+The API cannot be treated as a later optional service: Reset is on the rebuild
+safety path, while loss of ordinary graph updates only invalidates the API
+image.
+
+## Decisions to make during implementation
+
+The handoff leaves concrete layout, SQL types and libraries, capacities,
+fairness mechanics, error/backoff constants, HTTP limits, `MAX_WINDOW_DEPTH`,
+API wire format and URLs, adaptive Web delay, and the precise historical-read
+reset mechanism open. Choose and document these with tests while preserving
+settled behavior. Benchmark the wire format before fixing the server/Web
+contract. Pin and test any critical `rusty-kaspa` ordering or notification
+guarantee. A genuine architecture ambiguity or conflict goes to the
+Architecture role before dependent implementation continues.
+
+KGI v2.1 candidates in [future work](future-work.md) are excluded unless an
+accepted architecture decision promotes them.
