@@ -358,14 +358,10 @@ Live publication trigger.
 ## Resync block/VSPC pump — settled
 
 The common pump holds a normalized GetBlocks page and one pending VSPC V2
-response.
-Request VSPC V2 with `min_confirmation_count = None` and
-`data_verbosity_level = Some(RpcDataVerbosityLevel::None)`. This combination
-was verified against rusty-kaspa master `c338d495`: explicit `None` verbosity
-retains a minimal acceptance-data envelope and a nonempty response has an
-advancing `added.last()` cursor. The acceptance-data budget may shorten the
-response to a complete prefix. Preserve this behavior with a pinned regression
-fixture. An empty V2 page is a pump/Catchup hint, not a VSPC change.
+response. It obtains both through the exact
+[NodeService RPC contract](node-service.md#rpc-normalization), including the
+pinned VSPC request arguments and advancing-cursor assumption. An empty V2
+page is a pump/Catchup hint, not a VSPC change.
 A response with empty `added` and nonempty `removed` violates the pinned sink
 monotonicity invariant. Do not dispatch it or advance the cursor; abort the
 complete recovery attempt using the bounded synthetic removed-only `Retry`

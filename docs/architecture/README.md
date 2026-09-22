@@ -89,7 +89,7 @@ authority.
 | §16, DAA navigation and window API | `api.md`. Storage query semantics needed by these endpoints remain in `storage.md`. | Extracted; final verification pending |
 | §17, Web behavior | `web.md`. Wire contracts consumed by the browser remain in `api.md`. | Extracted; final verification pending |
 | §18, Resource isolation and scalability | `overview.md` owns the system-wide isolation model. Concrete component budgets and saturation behavior remain with each component; API budgets remain in `api.md`. | Pending |
-| §19, Tests and verification obligations | `verification.md`, organized by the architecture owner being verified. Exact unresolved test-matrix breadth remains a deferred decision rather than a duplicate contract. | Pending |
+| §19, Tests and verification obligations | `verification.md`, organized by the architecture owner being verified. Exact unresolved test-matrix breadth remains a deferred decision rather than a duplicate contract. | Extracted and reconciled; final verification pending |
 | §20, Remaining implementation decisions and v2.1 boundary | Unresolved v2 architecture goes to `../decisions/open.md`; constrained implementation choices go to `../decisions/deferred.md`; execution order goes to `../implementation/sequence.md`; work outside v2 remains in `../future-work.md`. | Pending |
 | §21, Rejected designs | `../decisions/rejected.md` or `../decisions/superseded.md`, according to whether the design was never accepted or was replaced after acceptance. Any current replacement behavior remains in its focused architecture owner. | Pending |
 

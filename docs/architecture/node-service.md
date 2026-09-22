@@ -189,4 +189,6 @@ For `GetVirtualChainFromBlockV2`, request
 `min_confirmation_count = None` and
 `data_verbosity_level = Some(RpcDataVerbosityLevel::None)`. Rusty-kaspa master
 `c338d495` preserves a minimal acceptance-data envelope and an advancing
-`added.last()` cursor for this combination; retain a pinned regression fixture.
+`added.last()` cursor for this combination. Its acceptance-data budget may
+shorten `added` to a complete prefix. The pinned evidence requirement is
+defined in [verification.md](verification.md#node-and-upstream-rpc-fixtures).
