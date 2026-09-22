@@ -1,175 +1,237 @@
 # VSPC processing
 
-> Focused extraction; the current consolidated contract is
+> Focused extraction; during the documentation reorganization, the current
+> consolidated contract remains
 > [handoff-2026-09-20.md](handoff-2026-09-20.md), which prevails on conflicts.
 
-## VSPC semantics and types — settled
+## Scope and ownership
 
-Rusty-kaspa change ordering:
+This document owns VspcProcessor sequencing, readiness, pending indexes,
+history, Catchup overlap, notification crossing, and committed VSPC graph
+publication. [NodeService](node-service.md) owns raw notification filtering.
+The [processing lifecycle](processing-lifecycle.md) owns synthetic production
+and phase coordination. [Storage](storage.md) owns the atomic VSPC mutation.
+
+## Change semantics — settled
+
+Rusty-kaspa orders a virtual selected-parent-chain change as:
 
 ```text
 removed: old sink backward toward common ancestor, ancestor excluded
 added:   common-ancestor child forward to new sink
 ```
 
-`VspcChange` never contains Genesis in added or removed. A resolved source may
-be Genesis for the first transition.
-
-Source and destination are derived:
+Source and destination hashes derive as:
 
 ```text
-source =
-    removed.first(),                       if removed is nonempty
-    selected_parent(added.first()),         otherwise
+source = removed.first()                 if removed is nonempty
+       = selected_parent(added.first())  otherwise
 
-destination =
-    added.last()
+destination = added.last()
 ```
 
-Every admitted nonempty change must have nonempty `added`. A removed-only
+The shared `VspcChange` and `ReadyVspcChange` representations are defined in
+the [domain model](domain-model.md#vspc-value-types--settled). Pending changes
+store `VspcChange` directly; there is no `PendingVspcChange` wrapper or
+`ReadyAddedBlock`.
+
+Every admitted nonempty change has a nonempty `added` vector. A removed-only
 change is impossible under pinned upstream selected-sink monotonicity and has
 no invented fallback destination. NodeService rejects that notification shape
-with `Require(Resync)`; the synthetic pump rejects it with its bounded
-whole-attempt `Retry` policy. Neither source admits it to VspcProcessor.
-NodeService also filters a raw VirtualChainChanged notification with both
-vectors empty before the bounded send, so VspcProcessor never receives that
-valid upstream no-op. It earns no overlap credit and changes no state. An
-empty V2 page is distinct synchronization information, not a VSPC event.
+with `Require(Resync)`. The synthetic pump rejects it under the bounded typed
+Retry policy. Neither source admits it to VspcProcessor.
 
-Pending changes are stored as `VspcChange` values directly. Ready representation:
+NodeService also discards a raw notification with both vectors empty before
+constructing or sending `VspcChange`. It earns no overlap credit and consumes
+no processor capacity. An empty VSPC V2 page is synchronization information
+owned by the pump, not a VSPC event. `added` and `removed` never contain
+Genesis; a derived source can be Genesis for the first transition.
 
-```rust
-struct ReadyVspcChange {
-    source: VspcPoint,
-    destination: VspcPoint,
-    removed: Arc<[CompactId]>,
-    added: Arc<[CompactId]>,
-}
-```
+## Processor lifecycle and gates — settled
 
-Destination consensus order is mandatory in `ReadyVspcChange` through
-`VspcPoint`. There is no `ReadyAddedBlock`; StorageService loads merge sets in
-the transaction.
+Conceptual commands are `BeginRebuild`, `BeginResync`, `Catchup`, `Live`,
+`Deactivate`, and `Shutdown`. Commands have priority over data inputs.
 
-Resolution handles both event-before-block and block-before-event. Use:
+A Begin command resets all run-local pending state, history, overlap, and
+phase state and closes the local notification gate. Continue polling the
+notification receiver while the gate is closed and discard notifications
+immediately rather than accumulating them. Catchup opens the gate with its
+objective synthetic-sink lower bound. Deactivate clears run-local state,
+releases the processing session's DB client clone, and acknowledges only after
+the local barrier is complete.
+
+## Pending state and history — settled
+
+Resolution supports both event-before-block and block-before-event. Keep:
 
 - one ordered synthetic FIFO;
-- raw unresolved notifications keyed by destination hash;
-- resolved candidates ordered by destination consensus order;
-- pending ID -> pending change;
-- missing hash -> waiting pending IDs;
-- hash -> recent `PersistedBlock` history;
-- `ConsensusOrder -> hash` for ordered pruning/history.
+- raw unresolved notifications indexed by destination hash;
+- resolved notification candidates ordered by destination `ConsensusOrder`;
+- pending ID to pending change;
+- missing hash to waiting pending IDs;
+- hash to recent `PersistedBlock` history; and
+- `ConsensusOrder` to hash for ordered pruning and history lookup.
 
-This dual index is intentional. A `HashMap<BlockHash, Vec<VspcChange>>`
-alone loses multi-dependency and sequencing structure.
-These pending structures share one capacity bound. Resolve both endpoints
-before readiness: an unresolved old notification must not block a later
-actionable one or earn overlap merely from its destination hash. Distinct
-incompatible resolved candidates request Resync.
+These pending structures share one bounded capacity. A single
+`HashMap<BlockHash, Vec<VspcChange>>` cannot represent multi-dependency
+readiness and ordered candidate selection.
 
-Committed VSPC sources and destinations are monotonic. For committed events:
+Resolve both source and destination before a notification becomes actionable.
+An unresolved older notification must not head-block a later actionable one or
+earn overlap merely because its raw destination hash is known. Distinct
+incompatible resolved candidates require Resync.
+
+Committed VSPC transitions are continuous and monotonic:
 
 ```text
 ready[n].source == committed_sink
 ready[n].source == ready[n - 1].destination
 ```
 
-Incoming competing candidates do not need to be monotonic before selection.
-Before Catchup, prune history entries with order strictly less than the
-committed destination. Do not prune during Catchup. On Catchup→Live and after
-each Live commit, prune entries with order strictly less than the committed
-destination, retaining the sink entry.
+Competing arrivals need not be monotonic before selection. Materialization
+history pruning is phase-specific:
 
-### VSPC readiness at the PP boundary
+```text
+Before Catchup: prune entries with order < committed VSPC sink.
+Catchup:        do not prune after synthetic or notification commits.
+Catchup→Live:   prune entries with order < committed VSPC sink.
+Live:           prune entries with order < sink after every successful commit.
+```
 
-Any synthetic or notification change can be processed, even during `PreSeal`,
-when both hold:
+The strict `<` comparison retains the sink entry required for added-only
+source resolution. Do not remove buffered notifications solely because their
+destination is below the sink without applying the phase-specific filtering
+and overlap rules.
+
+In Live, a rare network-delayed notification that cannot resolve after history
+pruning may remain non-actionable in the bounded pending structure. It must not
+block a later actionable crossing transition. Pending-capacity exhaustion
+requires Resync.
+
+## Readiness and materiality — settled
+
+Any synthetic or notification change can commit, including during PreSeal,
+only when both predicates hold:
 
 ```text
 CHAIN_READY: ready.source == committed_vspc_sink
 BLOCK_READY: ready.destination is BoundaryMaterialized
 ```
 
-Because retained PP-anticone blocks arrive before PP-future blocks that merge
-them, nonmaterialized merge-set identities referenced by added blocks are
-outside the retained boundary and can be ignored during coloring.
+An actionable reorg calls
+`ValidatedDbClient::resolve_materialized_ids(removed + added)` once. The
+ordered, cache-first result preserves input positions, including repeats, and
+distinguishes absent from boundary-identity members. Added-only changes derive
+their source and member IDs from retained materialization history without that
+database read.
 
-A nonmaterialized block named directly in `added` or `removed` violates the
-invariants and directly requests `Require(Rebuild)`: the DB can no longer be
-trusted against node state. An outside-boundary identity named only in an
-added block's merge set is ignorable during coloring.
+Endpoint `VspcPoint` consensus order comes from `PersistedBlock` history. The
+database batch resolves member IDs; it does not derive endpoint order or load
+merge sets for the processor.
 
-For an actionable reorg, call `ValidatedDbClient::resolve_materialized_ids`
-once for `removed` followed by `added`. The ordered, cache-first result
-preserves repeated inputs and distinguishes absent from identity-only
-members. Added-only changes resolve from history and make no DB lookup.
+A block named directly in `added` or `removed` that is confirmed
+nonmaterialized violates the retained-graph invariant and requests
+`Require(Rebuild)`. The database can no longer be trusted against node state.
+An identity-only member appearing only in an added block's merge set is an
+outside-boundary reference and is ignored by coloring. These cases are not
+equivalent.
 
-### Catchup crossing and overlap
+The storage transaction validates source continuity, every direct chain
+member's materiality, and vector consistency. Its complete persistence and
+coloring behavior is defined by the
+[atomic VSPC transaction](storage.md#atomic-vspc-transaction--settled).
 
-While the coordinated Catchup pump supplies synthetic changes, commit that
-ordered stream with priority; a notification must not overtake an available
-synthetic predecessor. A temporarily empty synthetic queue does not prove the
-stream has ended. At ordinary eligibility, ResyncEngine stops/joins synthetic
-production and sends the existing Live command. VspcProcessor then
-clears/discards synthetic input for the rest of the session and begins normal
-Live notification processing. For committed synthetic sink `C`, classify a
-resolved notification in this order:
+## Catchup filtering, crossing, and overlap — settled
+
+Catchup supplies an objective synthetic-sink lower bound:
+
+```rust
+struct VspcCatchup {
+    synthetic_sink_lower_bound: VspcPoint,
+}
+```
+
+Begin resets VspcProcessor's overlap flag and all run-local pending/history
+state. Catchup begins overlap accounting. A notification destination below
+the lower bound is a latecomer and is discarded without overlap credit.
+Unresolved raw destinations and consensus-order comparisons alone never earn
+credit.
+
+While the coordinated pump supplies synthetic changes, VspcProcessor commits
+that ordered stream with priority. Notifications may be consumed, resolved,
+and considered for overlap, but cannot overtake an available synthetic
+predecessor. A temporarily empty synthetic queue does not prove production has
+ended and does not authorize a notification commit.
+
+For committed synthetic sink `C`, classify each resolved notification in this
+order:
 
 1. Resolve `D = added.last()`. If `D.order <= C.order`, discard the
-   notification under the lower-bound rules and give overlap credit only when
-   accepted history proves the meeting. `D == C` is a discard, not an empty
-   normalized change.
+   notification under the lower-bound rules. Accepted retained history may
+   prove the meeting and earn overlap credit. `D == C` is a discard, never an
+   empty normalized change.
 2. If `D.order > C.order` and `C.hash` occurs in `added`, discard `removed`
-   and the `added` prefix through `C`, then apply the necessarily nonempty
-   added-only suffix sourced at `C`.
-3. Otherwise, derive and resolve the original source. Apply the original
-   change only if that source equals `C`.
+   and the `added` prefix through `C`. The necessarily nonempty added-only
+   suffix has source `C` and is actionable after endpoint readiness.
+3. Otherwise derive and resolve the original source. If it equals `C`, the
+   original change is directly actionable.
 4. Otherwise retain it pending and continue scanning later candidates.
 
-A sink in `removed` or a mere order comparison does not establish
-continuity. Resolve both endpoints of the resulting actionable change before
-readiness. Keep unresolved notifications bounded and without overlap credit.
+The sink's occurrence in `removed`, a later destination, or a consensus-order
+comparison cannot prove crossing. Resolve both endpoints of the resulting
+actionable change before readiness.
 
-### Operation during block-coverage admission
+A notification proved by accepted history to meet the committed synthetic
+stream sets VspcProcessor's `AtomicBool` overlap flag. Filtered older
+latecomers receive no credit. A duplicate transition from the notification
+source is an invariant violation requiring Resync, not an idempotent discard.
+ResyncEngine owns observation of the overlap flag and the global ordinary
+eligibility predicate.
 
-Ordinary block/VSPC overlap at a complete GetBlocks-page boundary starts the
-bounded block-coverage phase and VspcProcessor's component-local Live
-transition; it does not authorize BlockProcessor Live or global `EnteredLive`.
-ResyncEngine stops issuing VSPC V2 calls and producing new synthetic changes,
-stops/joins that producer, and sends VspcProcessor its existing Live command.
+## Component-local Live transition — settled
 
-No additional VSPC phase, terminal marker, barrier, or checkpoint is needed.
-The component-local Live transition clears/discards queued synthetic input and
-ignores later synthetic input for the rest of the session. VspcProcessor
-starts committing retained/new actionable notifications under its normal Live
-rules while BlockProcessor remains in Catchup. When all required block
-material is available, the committed sink can keep advancing. Missing material
-keeps the affected notification in pre-resolution readiness waiting while
-block processing and dependency resolution continue. This does not weaken the
-direct Rebuild fault when strict resolution of an actionable transition
-confirms a nonmaterialized chain member.
+At ordinary eligibility, the processing lifecycle stops and joins synthetic
+VSPC production before sending VspcProcessor its existing exact-once `Live`
+command. VspcProcessor then:
 
-On coverage-page cap exhaustion, `Require(Resync)` starts later recovery from
-the sink actually committed in database state at that time.
+1. clears or discards queued synthetic input;
+2. ignores later synthetic input for the rest of the session;
+3. prunes history below the committed sink with strict `<`; and
+4. makes retained and new actionable notifications authoritative.
 
-### Atomic VSPC transaction
+This is VspcProcessor's existing Live phase, not an additional coverage phase,
+terminal marker, checkpoint, or barrier. BlockProcessor can remain in Catchup
+while the lifecycle performs body-tip coverage.
 
-Storage validates that source equals current committed sink and that every
-added/removed chain block is materialized, with no duplicates or intersection.
-It loads added-block merge sets internally.
+Available block material lets notification-driven sink advancement continue.
+A notification whose needed block material has not arrived remains in
+pre-resolution readiness while block processing and dependency resolution
+continue. This waiting occurs before strict materiality resolution and does
+not weaken the direct Rebuild fault when an actionable transition confirms a
+nonmaterialized chain member.
 
-Conceptual updates:
+If later block coverage exhausts its page budget, the lifecycle requests
+Resync and deactivates the session. Recovery derives its next starting sink
+from the database state actually committed by VspcProcessor; there is no
+coverage checkpoint.
 
-- removed blocks: `is_in_vspc = false`, reset relevant color to Gray;
-- added blocks: `is_in_vspc = true`;
-- for each added block in order, color materialized blue merge-set members Blue
-  and then materialized red members Red;
-- ignore identity-only merge-set members;
-- red application after blue resolves any overlap deterministically.
+## Commit and graph publication — settled
 
-The whole change is one transaction. It returns the destination `VspcPoint`,
-which naturally avoids a destination clone at the caller.
+For each ready transition, VspcProcessor invokes storage's atomic VSPC
+transaction. Only definite commit advances its local committed sink and
+history. Storage returns the destination `VspcPoint`; no caller-side
+destination reconstruction or clone is required.
 
-There is no dedicated committed-sink table. It is derived from materialized
-blocks with `is_in_vspc = true`.
+After definite commit, VspcProcessor publishes the corresponding
+`VspcCommitted` update to the single ordered graph observer channel. The
+[BlockProcessor delivery contract](block-processing.md#committed-block-delivery)
+sends each newly materialized block's graph update before the `PersistedBlock`
+that can make a VSPC transition ready. Therefore VspcProcessor cannot publish
+a VSPC mutation ahead of its causal block updates.
+
+Graph observer delivery is nonblocking for processing. Failure invalidates
+ApiService's image under the [API contract](api.md), rather than rolling back
+the committed VSPC transaction or requesting processing recovery.
+
+The committed sink remains derived from materialized VSPC membership in
+storage. VspcProcessor does not persist a separate sink or checkpoint.

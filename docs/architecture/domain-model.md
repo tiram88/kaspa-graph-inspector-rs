@@ -124,3 +124,30 @@ have actual direct parents even when none has a visible retained edge.
 Selected-parent identity, actual direct-parent membership, retained edge
 visibility, and materiality are therefore separate properties and must not be
 inferred from one another.
+
+## VSPC value types — settled
+
+`VspcChange` is the normalized hash-level transition shared by NodeService,
+the recovery pump, and VspcProcessor:
+
+```rust
+struct VspcChange {
+    removed: Arc<[BlockHash]>,
+    added: Arc<[BlockHash]>,
+}
+```
+
+After endpoint and member resolution, VspcProcessor uses:
+
+```rust
+struct ReadyVspcChange {
+    source: VspcPoint,
+    destination: VspcPoint,
+    removed: Arc<[CompactId]>,
+    added: Arc<[CompactId]>,
+}
+```
+
+`destination` carries mandatory consensus order through `VspcPoint`.
+`ReadyVspcChange` contains the IDs and endpoint order required for readiness
+and sequencing. Storage loads added-block merge sets inside its transaction.

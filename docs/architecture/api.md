@@ -25,8 +25,9 @@ replication are not required in v2.
 Processors send `BlockCommitted`/`VspcCommitted` through **one ordered,
 bounded graph-update channel**, after their respective DB commits. The
 [BlockProcessor delivery contract](block-processing.md#committed-block-delivery)
-and VspcProcessor's corresponding producer contract establish causal order,
-so a VSPC update cannot reach this channel ahead of blocks it depends on.
+and [VspcProcessor producer contract](vspc-processing.md#commit-and-graph-publication--settled)
+establish causal order, so a VSPC update cannot reach this channel ahead of
+blocks it depends on.
 
 The observer channel is nonblocking from the processing viewpoint:
 failed/full delivery sets an out-of-band invalid flag; ApiService stops

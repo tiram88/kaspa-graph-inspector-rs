@@ -165,15 +165,9 @@ In a short Live IBD episode, connection loss or a violated stream invariant
 already causes recovery. NodeService has no separate continuous-IBD mode in
 KGI v2.
 
-Only NodeService sees raw rusty-kaspa notification types. The only VSPC payload
-outside NodeService is:
-
-```rust
-struct VspcChange {
-    removed: Arc<[BlockHash]>,
-    added: Arc<[BlockHash]>,
-}
-```
+Only NodeService sees raw rusty-kaspa notification types. Outside NodeService,
+the normalized payload is the shared
+[`VspcChange`](domain-model.md#vspc-value-types--settled).
 
 ### RPC normalization
 
