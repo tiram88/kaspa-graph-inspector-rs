@@ -48,8 +48,10 @@ The following rejected and superseded designs are already settled and must not b
 - Entering Live from overlap flags alone: superseded by the fixed body-tip
   coverage invariant. ResyncEngine stops producing synthetic VSPC changes at
   the ordinary eligibility boundary. An acknowledged VSPC freeze/barrier and
-  special coverage checkpoint are rejected: VspcProcessor receives no
-  coverage control and continues its ordinary processing.
+  special coverage checkpoint are rejected. VspcProcessor receives its
+  existing Live command at that boundary while BlockProcessor remains in
+  Catchup; no additional VSPC phase or synthetic-stream terminal marker is
+  introduced.
 - `Auto` recovery mode: removed; Resync failure explicitly requires Rebuild.
 - Dedicated persisted VSPC checkpoint/sink table: derived from block state.
 - Dedicated persisted PP identity by CompactId: DB PP is `(1, 0)`.

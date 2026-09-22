@@ -105,9 +105,11 @@ members. Added-only changes resolve from history and make no DB lookup.
 
 While the coordinated Catchup pump supplies synthetic changes, commit that
 ordered stream with priority; a notification must not overtake an available
-synthetic predecessor. Once synthetic production stops, ordinary readiness
-processing may commit retained/new actionable notifications without any
-coverage-specific command. For committed synthetic sink `C`, classify a
+synthetic predecessor. A temporarily empty synthetic queue does not prove the
+stream has ended. At ordinary eligibility, ResyncEngine stops/joins synthetic
+production and sends the existing Live command. VspcProcessor then
+clears/discards synthetic input for the rest of the session and begins normal
+Live notification processing. For committed synthetic sink `C`, classify a
 resolved notification in this order:
 
 1. Resolve `D = added.last()`. If `D.order <= C.order`, discard the
@@ -128,18 +130,21 @@ readiness. Keep unresolved notifications bounded and without overlap credit.
 ### Operation during block-coverage admission
 
 Ordinary block/VSPC overlap at a complete GetBlocks-page boundary starts the
-bounded block-coverage phase; it does not enter Live immediately. ResyncEngine
-stops issuing VSPC V2 calls and producing new synthetic changes.
+bounded block-coverage phase and VspcProcessor's component-local Live
+transition; it does not authorize BlockProcessor Live or global `EnteredLive`.
+ResyncEngine stops issuing VSPC V2 calls and producing new synthetic changes,
+stops/joins that producer, and sends VspcProcessor its existing Live command.
 
-VspcProcessor is not concerned with that phase. It receives no coverage
-command or barrier and creates no special checkpoint. Its ordinary ordered
-readiness and commit logic continues over synthetic changes already accepted
-and retained/new notification changes. When all required block material is
-available, the committed sink can keep advancing. Missing material keeps the
-affected change in pre-resolution readiness waiting while block processing and
-dependency resolution continue. This does not weaken the direct Rebuild fault
-when strict resolution of an actionable transition confirms a nonmaterialized
-chain member.
+No additional VSPC phase, terminal marker, barrier, or checkpoint is needed.
+The component-local Live transition clears/discards queued synthetic input and
+ignores later synthetic input for the rest of the session. VspcProcessor
+starts committing retained/new actionable notifications under its normal Live
+rules while BlockProcessor remains in Catchup. When all required block
+material is available, the committed sink can keep advancing. Missing material
+keeps the affected notification in pre-resolution readiness waiting while
+block processing and dependency resolution continue. This does not weaken the
+direct Rebuild fault when strict resolution of an actionable transition
+confirms a nonmaterialized chain member.
 
 On coverage-page cap exhaustion, `Require(Resync)` starts later recovery from
 the sink actually committed in database state at that time.

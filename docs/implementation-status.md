@@ -16,8 +16,9 @@ baseline.
 
 The reconciled Catchup contract now stops synthetic VSPC production at ordinary
 Live eligibility and requires bounded fixed-tip block coverage before Live.
-VspcProcessor remains unaware of coverage and continues ordinary notification
-processing. Focused test obligations specify successful-enqueue accounting,
+VspcProcessor receives component-local Live at ordinary eligibility and starts
+notification processing while BlockProcessor remains in Catchup. Focused test
+obligations specify the split Live transition, successful-enqueue accounting,
 cross-page dedup, network-scaled page caps and timing, continued VSPC progress,
 and `Require(Resync)` from current committed database state when coverage fails.
 

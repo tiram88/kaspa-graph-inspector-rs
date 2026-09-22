@@ -377,9 +377,10 @@ Orphans do not prevent transition to Live.
 While the coordinated Catchup pump supplies synthetic changes, those gapless
 ordered changes have commit priority. Notifications are still consumed,
 resolved, filtered, and retained as needed to establish overlap, but do not
-overtake an available synthetic predecessor. Once ResyncEngine stops producing
-synthetic changes, ordinary readiness processing can commit retained/new
-actionable notifications without a coverage-phase signal.
+overtake an available synthetic predecessor. A temporary empty synthetic queue
+does not change that rule. At ordinary eligibility, ResyncEngine stops/joins
+synthetic VSPC production and enqueues VspcProcessor Live; that transition
+abandons synthetic input and makes notifications authoritative.
 
 Notifications below the Catchup synthetic-sink lower bound are latecomers and
 are discarded without overlap credit. A notification transition can cross the
@@ -409,15 +410,18 @@ PostSeal == true
 && vspc_overlap == true
 ```
 
-establishes ordinary Live eligibility. It does not yet authorize Live.
+establishes ordinary Live eligibility. It authorizes VspcProcessor Live and
+the block-coverage phase, but not BlockProcessor Live or global `EnteredLive`.
 
-Stop issuing VSPC V2 calls and sending new synthetic changes. VspcProcessor is
-not informed of the coverage phase and receives no command or barrier. It
-continues its normal ordered readiness and commit processing over synthetic
-changes already accepted and retained/new notification changes. Available
-block material permits sink progress; unavailable material keeps the affected
-change in pre-resolution readiness waiting. A chain member confirmed
-nonmaterialized for an actionable transition remains a direct Rebuild fault.
+Stop issuing VSPC V2 calls and sending new synthetic changes, stop/join that
+producer, and successfully enqueue VspcProcessor's existing Live command
+before the first coverage request. VspcProcessor clears/discards queued
+synthetic input, ignores that input for the rest of the session, and begins
+committing actionable notifications under its ordinary Live rules.
+BlockProcessor remains in Catchup. Available block material permits VSPC sink
+progress; unavailable material keeps the affected notification in
+pre-resolution readiness waiting. A chain member confirmed nonmaterialized
+for an actionable transition remains a direct Rebuild fault.
 
 Capture a fixed `GetBlockDagInfo.tip_hashes` set `T` after subscriptions are
 Enabled and determine in one batch its already-materialized subset `M`. Do not
@@ -459,15 +463,19 @@ starting sink from current committed database state.
 
 On Live:
 
-- stop and join the block coverage producer before sending both Live commands;
-- BlockProcessor retains valid queued/orphan work;
-- VspcProcessor continues from its actual committed sink.
+- VspcProcessor has already received Live at ordinary eligibility;
+- stop and join the block coverage producer before sending BlockProcessor
+  Live;
+- BlockProcessor retains valid queued/orphan work.
 
 Any latent inconsistency will be detected by the normal Live invariants and
 will request recovery.
 `EnteredLive` is emitted only after the block coverage producer is
-stopped/joined and both Live commands are successfully enqueued. It does not
-mean queues or orphan state are empty.
+stopped/joined, the earlier VspcProcessor Live enqueue succeeded, and
+BlockProcessor Live is successfully enqueued. It does not mean queues or
+orphan state are empty. If coverage exhausts its budget, do not send
+BlockProcessor Live; request Resync and deactivate the component-local VSPC
+Live run normally.
 
 ## Short node IBD while Live — settled stance
 

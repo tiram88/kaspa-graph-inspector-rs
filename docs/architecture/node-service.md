@@ -105,8 +105,9 @@ ResyncEngine captures a fixed body-tip snapshot and enforces the bounded
 coverage invariant defined in `processing-lifecycle.md`; that gate accounts
 for activation-time BlockAdded drops, including a block outside the
 then-selected past. ResyncEngine stops synthetic VSPC production for that
-block-only coverage; VspcProcessor receives no coverage control. NodeService
-does not replay dropped callbacks.
+block-only coverage and sends VspcProcessor its existing Live command;
+BlockProcessor remains in Catchup. NodeService does not replay dropped
+callbacks.
 Disabling is an immediate local cutoff, not a quiescence or transport fence.
 
 Only NodeService sees raw rusty-kaspa notification types. The only VSPC payload

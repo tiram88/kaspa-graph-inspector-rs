@@ -110,10 +110,10 @@ sequential state transitions while allowing concurrent producers.
 Catchup overlap establishes ordinary Live eligibility. Before actual Live
 admission, ResyncEngine stops producing synthetic VSPC changes and runs a
 bounded block-only coverage phase against one fixed `GetBlockDagInfo` body-tip
-snapshot. VspcProcessor is unaware of this phase and continues its ordinary
-processing. Every captured tip must already be strictly materialized or have
-been successfully enqueued from GetBlocks; otherwise the page budget ends in
-Resync.
+snapshot. VspcProcessor receives its existing Live command and makes
+notifications authoritative while BlockProcessor remains in Catchup. Every
+captured tip must already be strictly materialized or have been successfully
+enqueued from GetBlocks; otherwise the page budget ends in Resync.
 
 ## Core identities and coordinates — settled
 
