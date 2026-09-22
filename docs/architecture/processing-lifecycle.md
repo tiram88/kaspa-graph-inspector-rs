@@ -439,9 +439,10 @@ With merge-set limit `L`, cap additional fully dispatched responses at:
 1 + ceil(catchup_max_daa_gap / (L + 1))
 ```
 
-The resulting current caps are 2, 3, and 7 pages at 1, 10, and 32 BPS.
-Empty and fully filtered responses consume budget. The cap is operational and
-does not claim a mathematical DAA advance per page.
+The resulting current caps are 2, 3, and 3 pages at 1, 10, and 32 BPS, using
+the pinned rusty-kaspa merge-set limits 180, 248, and 512. Empty and fully
+filtered responses consume budget. The cap is operational and does not claim
+a mathematical DAA advance per page.
 
 After each complete page, Live admission requires:
 

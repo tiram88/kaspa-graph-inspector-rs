@@ -45,11 +45,17 @@ struct ValidatedNodeInfo {
 
 struct KgiConsensusParams {
     bps: u64,
+    mergeset_size_limit: u64,
     anticone_finalization_depth: u64,
 }
 ```
 
 Add copied parameters only when KGI behavior actually depends on them.
+After validating the exact `NetworkId`, obtain these values from the pinned
+rusty-kaspa `Params` for that network through `bps()`,
+`mergeset_size_limit()`, and `anticone_finalization_depth()`. Reject unsupported
+network suffixes before constructing `Params`; do not reproduce the
+merge-set-limit formula inside KGI.
 
 ### NotificationRouter
 
