@@ -26,6 +26,7 @@ Conceptual state and Supervisor-facing operations are:
 ```rust
 enum StorageServiceState {
     Connecting,
+    AwaitingInitialization,
     Ready(Arc<ValidatedDbClient>),
     Unavailable(StorageUnavailableReason),
     Rejected(StorageRejection),
@@ -33,11 +34,20 @@ enum StorageServiceState {
 }
 
 wait_until_usable() -> Result<Arc<ValidatedDbClient>, StorageWaitError>
+initialize_if_uninitialized(
+    network_id: NetworkId,
+    genesis_hash: BlockHash,
+) -> Result<(), StorageError>
 shutdown() -> Result<(), StorageError>
 ```
 
-`wait_until_usable()` waits through transient `Connecting` and `Unavailable`
-states, but returns permanent `Rejected`, `Stopped`, or closed service state.
+`wait_until_usable()` waits through transient `Connecting`,
+`AwaitingInitialization`, and `Unavailable` states.
+`AwaitingInitialization` means StorageService has opened, locked, and inspected
+a never-initialized database but cannot yet publish it as usable. The state
+remains pending until initialization is authorized and a validated node
+identity supplies the complete immutable network binding. Permanent
+`Rejected`, `Stopped`, or closed service state is returned to the caller.
 Service state outlives individual validated DB generations.
 
 `ValidatedDbClient` represents exactly one validated connection-pool
@@ -100,11 +110,12 @@ Startup distinguishes these states:
 
 ```text
 Uninitialized
-    no KGI schema or network binding exists
+    no complete KGI schema and immutable network binding exists; this is a
+    transient storage/service initialization condition, not a usable database
 
 Empty
-    a valid v2 schema is bound to the exact configured network, with no
-    processing data
+    a valid v2 schema has complete immutable (network_id, genesis_hash)
+    binding and db_pp_blue_score = 0, with no PP or processing data
 
 Initialized
     a compatible schema has coherent PP, PP score, and materialized VSPC sink
@@ -113,8 +124,19 @@ Inconsistent
     schema and binding are valid, but processing contents require Rebuild
 
 Rejected
-    network mismatch or unsupported, newer, v1, partial, or unknown schema
+    network identity mismatch or unsupported, newer, v1, partial, or unknown
+    schema
 ```
+
+StorageService may connect, acquire its ownership lock, inspect contents, and
+perform authorized preparatory work while the database is `Uninitialized`.
+None of those actions turns it into `Empty`. Only one atomic initialization
+transaction supplied with the validated node's `(network_id, genesis_hash)`
+may cross the semantic `Uninitialized -> Empty` boundary and publish a usable
+database. A crash rolls that transaction back to `Uninitialized`; it cannot
+expose a partially bound `Empty` database. A structurally valid initialized
+schema and binding with incoherent processing data is `Inconsistent`, while a
+partial schema or binding is `Rejected`.
 
 `--initialize-db` initializes only `Uninitialized`. It is idempotent for every
 compatible existing database: retain `Empty`, `Initialized`, or `Inconsistent`
@@ -123,7 +145,9 @@ database remains usable only for Rebuild and is not misclassified as `Empty`.
 Without the flag, first initialization requires interactive confirmation;
 noninteractive startup fails with an actionable confirmation error.
 
-An existing database is never silently rebound to the CLI network or reset.
+An existing database is never silently rebound to the CLI network, the
+validated node's Genesis, or reset. A mismatch in either immutable binding
+field is rejected rather than repaired through Rebuild.
 `--clear-db` requests processing-data Rebuild under the existing compatible
 network binding. A persistent destructive `--reinitialize-db --yes` startup
 option is forbidden; a separate explicit administrative reset remains
@@ -139,16 +163,40 @@ Supported older v2 schemas migrate forward through ordered transactional
 migrations under the lock before client publication. Automatic down, online,
 or in-place v1-to-v2 migration is forbidden.
 
-The correctness metadata, called **node metadata**, contains only:
+The correctness metadata, called **node metadata**, is conceptually:
 
-```text
-network_id
-db_pp_blue_score
+```rust
+struct NodeMetadata {
+    network_id: NetworkId,
+    genesis_hash: BlockHash,
+    db_pp_blue_score: u64,
+}
 ```
+
+`network_id` and `genesis_hash` form the immutable database network binding.
+No field is nullable and a partially bound `NodeMetadata` is invalid.
+`db_pp_blue_score` is zero in an `Empty` database and in an initialized
+Genesis-anchored database. PP presence distinguishes those states. For any
+other initialized database it is the retained PP's blue score.
+`ValidatedDbClient` exposes the immutable `NodeMetadata` read from its exact
+database generation for session binding checks.
 
 The database PP is located by `(level=1, slot=0)`, never by assuming ID 1 or
 the minimum ID. A last-known node server version is observational and is not
 persisted as correctness metadata.
+
+An initialized database whose PP hash equals `NodeMetadata.genesis_hash` is a
+valid Genesis anchor only when all of these invariants hold:
+
+- the PP is materialized at `(level=1, slot=0)`, is in VSPC, and
+  `NodeMetadata.db_pp_blue_score` is zero;
+- the committed materialized VSPC sink exists and is coherent;
+- Genesis has ORIGIN as its non-null selected-parent identity and has zero
+  actual direct parents; and
+- ORIGIN is the only `BoundaryIdentity`.
+
+An extra boundary identity or another violation of these processing
+invariants classifies the database as `Inconsistent` and requires Rebuild.
 
 ## Persistent representation — settled
 
@@ -279,9 +327,10 @@ The pruning point argument is mandatory. One transaction:
 6. stores `db_pp_blue_score`; and
 7. returns the resulting materialized anchor after commit.
 
-The network binding and schema/migration state survive. Cache reset and seed
-are published only after definite commit. This is not a general clear
-primitive callable without a pruning point.
+The immutable `(network_id, genesis_hash)` binding and schema/migration state
+survive. Rebuild atomically replaces only `db_pp_blue_score` with the supplied
+PP's score. Cache reset and seed are published only after definite commit.
+This is not a general clear primitive callable without a pruning point.
 
 When the PP's selected parent is synthetic ORIGIN, the transaction creates
 that permanent outside-boundary identity and uses its non-null ID. Genesis's

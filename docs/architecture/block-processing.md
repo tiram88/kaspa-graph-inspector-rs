@@ -11,22 +11,33 @@ owns raw BlockAdded validation and routing.
 
 ## PP-boundary phase behavior — settled
 
-For a Rebuild in `PreSeal`:
+For a Rebuild, the effective threshold is:
 
 ```text
 boundary_seal_blue_score =
+    db_pp_blue_score
+        when db_pp == network Genesis
+
     db_pp_blue_score + anticone_finalization_depth
+        otherwise
 ```
 
-This BlueScore approximation is accepted. PreSeal blocks arrive in
+Genesis has no discarded DAG past, so a Genesis PP is intrinsically sealed at
+blue score zero. After the atomic Genesis rebuild transaction, `BeginRebuild`
+starts BlockProcessor directly in `PostSeal` and emits the existing exact-once
+`PpBoundarySealed` milestone while handling Begin. Genesis never enters the
+ordinary `BlockMaterialization` or `PersistedBlock` path.
+
+For every non-Genesis PP, the BlueScore approximation above is accepted and
+`BeginRebuild` starts in `PreSeal`. PreSeal blocks arrive in
 consensus-topological order and use storage's `AllowBoundaryIdentities`
 policy. Missing parents and merge-set identities may be outside the retained
 PP boundary. The materialized retained portion of the PP anticone precedes
 PP-future blocks that merge it.
 
-The **first** block whose blue score is at or above the threshold uses
-`RequireMaterialized`, not the permissive policy. Only its definite successful
-commit changes BlockProcessor's local phase to `PostSeal` and emits the
+For a non-Genesis PP, the **first** block whose blue score is at or above the
+threshold uses `RequireMaterialized`, not the permissive policy. Only its
+definite successful commit changes BlockProcessor's local phase to `PostSeal` and emits the
 exact-once `PpBoundarySealed` milestone upward to ResyncEngine. An ambiguous
 or failed transaction emits no milestone. `PpBoundarySealed` is never a
 command sent back to BlockProcessor.
@@ -35,6 +46,11 @@ The [processing lifecycle](processing-lifecycle.md) owns propagation of the
 milestone and the prohibition on entering Catchup before ResyncEngine observes
 it. `BeginResync` starts BlockProcessor in PostSeal only after successful
 reconciliation. All PostSeal materialization is strict.
+
+If the process stops after the Genesis rebuild transaction commits but before
+the milestone is observed, restart derives the sealed boundary from committed
+storage and ordinary Resync starts PostSeal. No replayed milestone or special
+repair transaction is required.
 
 Before Catchup, a missing dependency under strict policy requires Resync
 rather than creating an orphan. During Catchup and Live, unresolved ordinary

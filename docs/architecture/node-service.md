@@ -57,6 +57,8 @@ configuration.
 Validation requires:
 
 - exact configured Kaspa network type and suffix;
+- discovery of the node's configured Genesis hash through the validated RPC
+  connection;
 - compatible RPC API version/revision;
 - `handle_stop_notify() == true`;
 - `handle_message_id() == true`;
@@ -71,6 +73,7 @@ full rusty-kaspa params object:
 ```rust
 struct ValidatedNodeInfo {
     network_id: NetworkId,
+    genesis_hash: BlockHash,
     server_version: String,
     rpc_api_version: Option<u16>,
     rpc_api_revision: Option<u16>,
@@ -90,6 +93,35 @@ rusty-kaspa `Params` for that network through `bps()`,
 `mergeset_size_limit()`, and `anticone_finalization_depth()`. Reject unsupported
 network suffixes before constructing `Params`; do not reproduce the
 merge-set-limit formula inside KGI.
+
+### Genesis discovery
+
+Genesis identity comes from the node, not from KGI's local consensus
+parameters. This keeps identity correct for custom devnets and new network
+suffixes whose Genesis hash KGI may not know. Availability of the other
+consensus parameters required by KGI remains a separate validation condition.
+
+During validation of each physical RPC generation, NodeService makes this raw
+request outside the ordinary normalized block pump:
+
+```text
+GetBlocks {
+    low_hash: None,
+    include_blocks: false,
+    include_transactions: false,
+}
+```
+
+At the pinned rusty-kaspa revision, `None` selects the node's configured
+Genesis as the low hash and the first returned `block_hashes` member is that
+Genesis. Validation requires a nonempty hash vector and an empty block vector,
+then copies the first hash into `ValidatedNodeInfo.genesis_hash`. Transport
+failure or malformed output fails that validation attempt; NodeService never
+guesses or substitutes a locally known Genesis hash.
+
+This discovery call is deliberately distinct from `get_blocks` normalization
+below. It neither constructs a synchronization page nor applies the explicit
+inclusive-low-hash contract used by the pump.
 
 ### NotificationRouter
 

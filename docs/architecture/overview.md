@@ -77,6 +77,15 @@ observations of those owners, never a second source of lifecycle authority.
   they do not create lifecycle ownership.
 - The exact validated RPC and DB generations acquired for a processing run
   stay associated with that run.
+- StorageService may open, lock, and inspect an Uninitialized database before
+  NodeService is Ready. Supervisor supplies the validated
+  `(network_id, genesis_hash)` only for StorageService's atomic first
+  initialization; the resulting network-bound Empty database is the first
+  usable state.
+- Before starting a processing run, Supervisor requires an exact match between
+  the validated node identity and the immutable binding exposed by the
+  validated DB generation. A mismatch is rejected rather than rebound or
+  recovered through Rebuild.
 - Processing commits precede their graph observer updates. Observer behavior
   cannot redefine processing commit semantics.
 - Web is an API consumer outside the worker control tree; its behavior is

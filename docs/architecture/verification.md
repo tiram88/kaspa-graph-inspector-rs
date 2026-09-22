@@ -24,11 +24,15 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
 1. GetBlocks fixtures for the inclusive low hash, unequal hash/block vector
    lengths, hash/block disagreement, duplicates, and a valid response that
    normalizes to zero blocks.
-2. A pinned rusty-kaspa fixture in which a side-block task emits a fully empty
+2. Raw Genesis discovery with `low_hash = None`, blocks and transactions
+   disabled: pin the first returned hash to the node's configured Genesis,
+   require a nonempty hash vector and empty block vector, and reject malformed
+   responses without substituting a local Genesis constant.
+3. A pinned rusty-kaspa fixture in which a side-block task emits a fully empty
    `VirtualChainChanged`; assert that NodeService drops it before bounded
    delivery with no overlap credit, processor-capacity use, or recovery.
    Distinguish it from an empty VSPC V2 RPC page.
-3. A pinned fixture for
+4. A pinned fixture for
    `min_confirmation_count = None` and
    `data_verbosity_level = Some(RpcDataVerbosityLevel::None)` that checks the
    exact `10 * mergeset_size_limit` added chain-path batch size, the complete
@@ -36,11 +40,11 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
    acceptance-data envelope, any further shortening of `added` only to a
    complete prefix, and an advancing `added.last()` cursor for every nonempty
    response.
-4. Mocked removed-only notification and VSPC V2 responses. Assert the
+5. Mocked removed-only notification and VSPC V2 responses. Assert the
    source-specific dispositions: a notification requires Resync; a synthetic
    page does not advance its cursor and uses the bounded whole-attempt Retry
    policy.
-5. The subscription activation order in
+6. The subscription activation order in
    [NotificationRouter](node-service.md#notificationrouter): routing remains
    Disabled until both remote starts succeed, callbacks received during that
    interval are dropped, and neither overlap credit nor immediate recovery is
@@ -73,13 +77,29 @@ and [rebuild transaction](storage.md#rebuild-transaction--settled) with:
    never rebinds its network.
 5. Advisory-lock loss retires the DB generation. Compatible v2 migrations are
    transactional and finish before client publication.
+6. Storage may open, lock, and inspect Uninitialized contents before node
+   validation, but only atomic publication of complete `NodeMetadata` crosses
+   `Uninitialized -> Empty`. Inject a crash around this transaction and prove
+   that no partially bound Empty state can appear.
+7. Node metadata is non-null and distinguishes Empty from Genesis-anchored
+   initialization despite both using `db_pp_blue_score = 0`. Reject the same
+   `NetworkId` paired with a different Genesis rather than rebinding or
+   rebuilding.
+8. A Genesis anchor is materialized at `(1,0)`, belongs to VSPC, has ORIGIN as
+   selected parent and zero actual direct parents, and has a coherent committed
+   sink. Any additional boundary identity classifies processing contents as
+   Inconsistent and requires Rebuild.
 
 Verify the [block materialization transaction](storage.md#block-materialization-transaction--settled)
 and [PP seal behavior](block-processing.md#pp-boundary-phase-behavior--settled)
-with an ordering fixture: the threshold block commits before BlockProcessor
-enters PostSeal or emits `PpBoundarySealed`. Inject crash and ambiguous-commit
-outcomes around the seal and assert that no unproven milestone is emitted and
-the next run derives truth solely from committed storage.
+with an ordering fixture for a non-Genesis PP: the threshold block commits
+before BlockProcessor enters PostSeal or emits `PpBoundarySealed`. For Genesis,
+verify that the rebuild transaction establishes an intrinsically sealed
+boundary, `BeginRebuild` enters PostSeal directly, and the same exact-once
+milestone follows Begin without ordinary Genesis materialization. Inject crash
+and ambiguous-commit outcomes around both paths; an unproven non-Genesis seal
+emits no milestone, while restart after a committed Genesis rebuild derives
+PostSeal from storage and proceeds through ordinary Resync.
 
 Verify the [atomic VSPC transaction](storage.md#atomic-vspc-transaction--settled)
 for source continuity, direct-chain materiality, duplicate/intersection
@@ -104,6 +124,14 @@ no-transactions GetBlock header. Cover:
 - a definitively absent or invalid sink and a DAA mismatch requiring Rebuild;
 - transport or session failure without inferring Rebuild; and
 - a response carrying the wrong hash as a protocol/session fault.
+
+Also cover a coherent Genesis-anchored database below anticone finalization
+depth, Empty-versus-Genesis discrimination, exact node/database
+`(network_id, genesis_hash)` matching, and both synthetic streams anchored at
+the committed materialized VSPC sink. Immediately after bootstrap that sink is
+Genesis; after advancement it may be newer. ORIGIN must never be sent to an
+RPC. A mismatch in immutable node identity is rejected rather than requesting
+Rebuild.
 
 Verify the [Catchup trigger](processing-lifecycle.md#catchup-trigger) with:
 

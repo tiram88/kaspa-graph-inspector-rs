@@ -29,6 +29,11 @@ is desired and the engine is idle. The two waits are polled concurrently with
 Supervisor commands/events; the Supervisor main loop must not block.
 
 Partial acquisition may be retained while waiting for the other resource.
+StorageService can open, lock, and inspect an Uninitialized database while the
+node wait continues. Once the validated RPC generation is available,
+Supervisor supplies its `(network_id, genesis_hash)` to StorageService for the
+authorized atomic first initialization. StorageService alone performs the
+`Uninitialized -> Empty` transition and publishes the resulting DB generation.
 Before starting, recheck that the captured recovery obligation is still the
 latest `desired_recovery`, the engine is Idle, and both services still publish
 those exact acquired RPC and DB `Arc` generations as Ready.
@@ -36,6 +41,10 @@ those exact acquired RPC and DB `Arc` generations as Ready.
 The exact `Arc<ValidatedRpcClient>` and `Arc<ValidatedDbClient>` are
 passed in `Start` and then through the session to all consumers, including
 DependencyResolver. This guarantees one resource generation per run.
+Before sending `Start`, require the validated node's `(network_id,
+genesis_hash)` to equal the immutable binding exposed by that DB generation.
+A mismatch is terminal pairing rejection: never rebind the database or infer
+that Rebuild can repair it.
 
 ## Supervisor and recovery intent — settled
 
@@ -287,8 +296,18 @@ Resync requirements:
 
    ```text
    db_boundary_seal_blue_score =
+       db_pp_blue_score
+           when db_pp == network Genesis
+
        db_pp_blue_score + anticone_finalization_depth
+           otherwise
    ```
+
+For a Genesis PP the effective threshold is therefore zero. A coherent
+Genesis-anchored database may use ordinary Resync even while the chain is
+younger than `anticone_finalization_depth`; every other reconciliation check
+above still applies. `Empty` remains distinct because it has no PP or committed
+sink despite also storing `db_pp_blue_score = 0`.
 
 A missing or inconsistent stored sink, a definitive absent/invalid response
 from the node, a stored/returned DAA-score mismatch, or another failed
@@ -298,11 +317,6 @@ session fault/retry and does not prove that Rebuild is required. A returned
 hash other than the requested sink is a malformed RPC response and a
 protocol/session fault. Rebuild occurs as a separate run; there is no internal
 Auto fallback.
-
-The special recovery behavior for an initialized database whose retained
-pruning point is Genesis remains an open requirement; see
-[open.md](../decisions/open.md). This section does not infer a policy
-beyond the settled Genesis/ORIGIN representation.
 
 ### Rebuild preparation
 
@@ -348,6 +362,11 @@ For Rebuild, obtain the pruning point, send the database-rebuild Reset, and
 await its acknowledgement before `rebuild_from_pruning_point`. After processor
 Begin, ResyncEngine sends the PostSeal publication trigger only when it
 observes BlockProcessor's definitely committed `PpBoundarySealed` event.
+When that PP is Genesis, the rebuild transaction has already established its
+intrinsically sealed boundary; BlockProcessor begins directly in PostSeal and
+emits the same milestone while handling `BeginRebuild`. ResyncEngine handles it
+through the ordinary path, including the PostSeal publication and Supervisor's
+`Rebuild -> Resync` downgrade.
 
 When the global `EnteredLive` conditions are satisfied, ResyncEngine sends the
 Live publication trigger.
@@ -363,6 +382,16 @@ A response with empty `added` and nonempty `removed` violates the pinned sink
 monotonicity invariant. Do not dispatch it or advance the cursor; abort the
 complete recovery attempt using the bounded synthetic removed-only `Retry`
 policy above.
+
+Both synthetic streams start from the committed `MaterializedSyncAnchor` sink:
+
+- GetBlocks uses the sink hash as its inclusive `low_hash`, and NodeService
+  strips that repeated anchor during normalization;
+- VSPC V2 uses the same sink hash as its traversal start, which is excluded
+  from the returned `added` path;
+- immediately after fresh Genesis bootstrap the sink is Genesis, while a later
+  Genesis-anchored run may start from a newer committed sink; and
+- synthetic ORIGIN is never an RPC anchor.
 
 ```text
 request VSPC V2 from current low_hash
