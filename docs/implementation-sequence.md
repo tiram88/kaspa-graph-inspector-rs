@@ -42,13 +42,16 @@ image.
 ## Decisions to make during implementation
 
 The handoff leaves concrete layout, SQL types and libraries, capacities,
-fairness mechanics, error/backoff constants, HTTP limits, `MAX_WINDOW_DEPTH`,
-API wire format and URLs, adaptive Web delay, and the precise historical-read
-reset mechanism open. Choose and document these with tests while preserving
-settled behavior. Benchmark the wire format before fixing the server/Web
-contract. Pin and test any critical `rusty-kaspa` ordering or notification
-guarantee. A genuine architecture ambiguity or conflict goes to the
-Architecture role before dependent implementation continues.
+fairness mechanics, HTTP limits, `MAX_WINDOW_DEPTH`, API wire format and URLs,
+adaptive Web delay, and the precise historical-read reset mechanism open.
+Choose and document these with tests while preserving settled behavior.
+Fault classification and retry/backoff defaults are fixed by the handoff;
+implementation may choose module placement, error-library syntax, and
+configuration plumbing without changing them. Benchmark the wire format
+before fixing the server/Web contract. Pin and test any critical
+`rusty-kaspa` ordering or notification guarantee. A genuine architecture
+ambiguity or conflict goes to the Architecture role before dependent
+implementation continues.
 
 KGI v2.1 candidates in [future work](future-work.md) are excluded unless an
 accepted architecture decision promotes them.

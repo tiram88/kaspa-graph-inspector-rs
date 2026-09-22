@@ -20,6 +20,21 @@ NodeService lifecycle worker
 `ValidatedRpcClient` represents exactly one validated physical connection
 lifetime. Processing code receives this capability, not `NodeService`.
 
+Transient connection, transport, and validation-RPC failures are retried
+indefinitely with nominal delays:
+
+```text
+1s, 2s, 4s, 8s, 16s, 30s, 30s, ...
+```
+
+Each actual delay uses equal jitter from 50% through 100% of the nominal
+delay, and every wait is shutdown-cancellable. Reset the sequence only after
+NodeService has remained continuously Ready for 60 seconds; opening a
+connection alone does not reset it. Network mismatch, unsupported network
+suffix, incompatible RPC API, and missing required notification capabilities
+publish terminal `Rejected` and are not retried under unchanged
+configuration.
+
 Validation requires:
 
 - exact configured Kaspa network type and suffix;

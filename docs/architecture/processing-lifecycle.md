@@ -72,6 +72,16 @@ enum FaultDisposition {
 }
 ```
 
+Cross-worker faults use a typed envelope containing the source component,
+`FaultDisposition`, semantic `FaultKind`, and diagnostic text. Required fault
+kinds distinguish service-generation loss, notification-continuity loss,
+invalid recovery input, reconciliation failure, materiality violation,
+confirmed dependency unavailability, persistence outcome, and ownership
+failure. Invalid recovery input distinguishes removed-only synthetic VSPC,
+malformed GetBlocks, and malformed VSPC responses. Persistence distinguishes
+definite failure, retry exhaustion, and ambiguous commit. Only typed fields
+drive control, retry counters, and metrics; diagnostic strings never do.
+
 - `Retry` is meaningful only while a recovery is active. It aborts and fully
   deactivates the current attempt; after Idle and backoff, Supervisor reruns
   fresh preparation for the strongest unsatisfied recovery obligation. It
@@ -84,12 +94,28 @@ enum FaultDisposition {
   the DB can no longer be trusted against node state. RPC connection failure
   is not proof of dependency unavailability.
 
+When the same validated RPC and DB generations remain Ready, whole-attempt
+recovery retries use nominal delays `1s, 2s, 4s, 8s, 16s, 30s`, capped at
+`30s`, with equal jitter from 50% through 100%. Reset that general backoff on
+`EnteredLive`, a new validated RPC or DB generation, or a stronger recovery
+obligation. Generation loss waits for the corresponding service reconnect
+loop without adding this delay. `Require(Resync)` and `Require(Rebuild)` do not
+consume or wait on the Retry sequence. All waits are lifecycle-cancellable.
+
 For the typed synthetic removed-only VSPC fault, Supervisor retains a counter
 across attempts on the same `ValidatedRpcClient` generation. The first three
 occurrences each produce `Retry`; the fourth is `Fatal`. A new validated RPC
 generation or `EnteredLive` resets it; changing recovery mode on the same
 generation does not. Removed-only notifications require Resync and do not
 consume this pump-specific budget.
+The three permitted retries use the first three general recovery delay slots:
+nominally `1s`, `2s`, and `4s`, with the same equal jitter.
+
+Processing semantic transactions retry only PostgreSQL SQLSTATE `40001` and
+`40P01`, retrying the complete transaction at most three times after nominal
+`10ms`, `50ms`, and `250ms` delays with equal jitter. An ambiguous commit is
+never retried. Exhaustion aborts active recovery with `Retry`; in Live it
+requests `Require(Resync)`.
 
 Fault ownership:
 

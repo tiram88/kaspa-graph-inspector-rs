@@ -62,6 +62,14 @@ The following rejected and superseded designs are already settled and must not b
   Catchup; no additional VSPC phase or synthetic-stream terminal marker is
   introduced.
 - `Auto` recovery mode: removed; Resync failure explicitly requires Rebuild.
+- Escalating an arbitrary number of failed Resync attempts to Rebuild:
+  rejected. Recovery strength follows typed evidence, not retry count.
+- Immediate or unbounded-rate service/recovery retry: rejected. NodeService,
+  StorageService, and whole-attempt recovery use the settled capped jittered
+  schedules; permanent incompatibility is terminal `Rejected`.
+- Transparently retrying an ambiguous database commit: rejected. Only definite
+  PostgreSQL `40001`/`40P01` rollbacks receive the bounded complete-transaction
+  retry policy.
 - Dedicated persisted VSPC checkpoint/sink table: derived from block state.
 - Dedicated persisted PP identity by CompactId: DB PP is `(1, 0)`.
 - `ReadyAddedBlock`: unnecessary; Storage loads merge sets transactionally.

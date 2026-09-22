@@ -25,6 +25,19 @@ shutdown() -> Result<(), StorageError>
 caches. A processing session uses one exact storage generation; it is never
 rebound underneath a running session.
 
+Transient connection and validation failures are retried indefinitely with
+nominal delays:
+
+```text
+1s, 2s, 4s, 8s, 16s, 30s, 30s, ...
+```
+
+Each actual delay uses equal jitter from 50% through 100% of the nominal
+delay, and every wait is shutdown-cancellable. Reset the sequence only after
+StorageService has remained continuously Ready for 60 seconds. Network
+binding mismatch and unsupported, newer, v1, partial, or unknown schemas
+publish terminal `Rejected` and do not retry under unchanged configuration.
+
 Startup distinguishes Uninitialized (no recognized KGI schema or binding),
 Empty (valid v2 schema bound to the exact CLI network but no processing data),
 Initialized (coherent PP, score, and VSPC sink), and inconsistent or
@@ -59,6 +72,16 @@ reports its actual outcome:
 
 All persistent mutations are transactional. Caches are published only after
 commit. A replacement validated generation starts with fresh caches.
+
+Only PostgreSQL SQLSTATE `40001` (serialization failure) and `40P01` (deadlock
+detected) authorize a local retry of a processing semantic transaction. Retry
+the complete transaction at most three times, after nominal delays `10ms`,
+`50ms`, and `250ms`, with equal jitter from 50% through 100%. Return other
+definite failures immediately. Never retry a connection-loss outcome during
+commit because its result is ambiguous. Exhaustion is the typed persistence
+retry-exhausted fault: recovery aborts the whole attempt with `Retry`; Live
+requests `Require(Resync)`. No cache state is published before a definite
+commit.
 
 No connection epoch, revocation check, cache generation, or global
 operation-completion barrier is required.
