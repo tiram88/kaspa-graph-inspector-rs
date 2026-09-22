@@ -95,10 +95,13 @@ channel, or invalid forward command is a typed ownership/session or fatal
 fault, not ordinary DAG discontinuity. A dropped barrier acknowledgement
 receiver does not cancel the worker's completed teardown transition.
 
-`Rebuild` intent must not outlive successful PP-boundary sealing. At the
-`PpBoundarySealed` milestone, Supervisor downgrades both desired and active
-recovery to `Resync`. Entering Live satisfies and clears the remaining recovery
-requirement.
+`Rebuild` intent must not outlive successful PP-boundary sealing.
+`PpBoundarySealed` is an exact-once upward milestone event, never a command to
+BlockProcessor. After the threshold block commits, BlockProcessor enters
+PostSeal and emits the event to ResyncEngine. ResyncEngine observes it before
+permitting Catchup and propagates it to Supervisor. Supervisor then downgrades
+both desired and active recovery to `Resync`. Entering Live satisfies and
+clears the remaining recovery requirement.
 
 Administrative/API-triggered recovery through this same Supervisor path is a
 KGI v2.1 candidate, not a v2 requirement.
@@ -313,10 +316,10 @@ fallback. The rolling marker is the normal path and these fallbacks cover an
 exceptional failure to transition through it. A material omission exposed
 under strict pre-Catchup processing uses the existing `Require(Resync)` fault
 path; there is no separate mixed-view recovery protocol. The synthetic pump
-continues through Catchup and observes later reorgs. Rebuild must have
-definitely committed and emitted
-`PpBoundarySealed` before the primary path or a fallback can enter Catchup.
-Eligibility while still PreSeal fails the current recovery.
+continues through Catchup and observes later reorgs. ResyncEngine must have
+observed BlockProcessor's definitely committed `PpBoundarySealed` event before
+the primary path or a fallback can enter Catchup. Eligibility while still
+PreSeal fails the current recovery.
 Resync starts PostSeal only after reconciliation.
 
 The previously explored `unordered_sink_capacity`, tenfold mergeset margin,

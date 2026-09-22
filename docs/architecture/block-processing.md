@@ -20,10 +20,12 @@ outside the retained PP boundary. The materialized retained portion of the PP
 anticone arrives before PP-future blocks that merge it.
 
 The first block with blue score at or above the threshold is processed under
-strict policy. Only after that block commits does BlockProcessor enter `PostSeal`
-and emit `PpBoundarySealed`.
-Rebuild cannot enter Catchup before this definite seal; an early Catchup
-trigger fails the recovery attempt. Resync begins PostSeal only after
+strict policy. Only after that block commits does BlockProcessor enter
+`PostSeal` and emit `PpBoundarySealed` upward to ResyncEngine. ResyncEngine
+observes the seal and propagates the milestone to Supervisor. The milestone is
+never sent back to BlockProcessor as a command.
+ResyncEngine cannot enter Catchup before observing this definite seal; an early
+Catchup trigger fails the recovery attempt. Resync begins PostSeal only after
 reconciliation.
 
 After sealing, every resync cycle is strict. Before Catchup, a missing
@@ -54,7 +56,6 @@ Conceptual commands include:
 ```text
 BeginRebuild
 BeginResync
-PpBoundarySealed
 Catchup { lower_bound, ... }
 Live
 Deactivate
