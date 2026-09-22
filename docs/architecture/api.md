@@ -190,8 +190,10 @@ decode, and graph-model construction. SSE stays small text cursor events.
 
 The existing reliable processing-to-ApiService control path carries
 conceptual `Reset`, `PublishPostSeal`, and `PublishLive` controls; no new
-recovery component is needed. Every prepared processing session sends exactly
-one Reset. Common Reset effects are:
+recovery component is needed. The exact send points and ordering belong to
+[processing-lifecycle.md](processing-lifecycle.md#api-session-replacement-and-publication).
+ApiService accepts exactly one Reset for each prepared processing session.
+Common Reset effects are:
 
 - mark the previously published HGC image Stale while allowing that coherent
   old image to remain readable;
@@ -208,15 +210,12 @@ PostSeal and Live are reliable, exact-once, state-specific controls, but they
 are not processing barriers and have no publication-completion
 acknowledgement.
 
-The processing lifecycle owns the send points and ordering of these controls.
-For ordinary Resync, read-only reconciliation finishes before Reset. A failed
-reconciliation requests a separate Rebuild without resetting ApiService. A
-successful Resync Reset leaves new and in-flight historical DB reads
+An ordinary Resync Reset leaves new and in-flight historical DB reads
 available.
 
-For Rebuild, the database-rebuild Reset occurs before processing data is
-cleared. This Reset has the additional completed effect of closing new
-historical DB reads and boundedly draining or cancelling existing ones.
+The database-rebuild Reset has the additional completed effect of closing new
+historical DB reads and boundedly draining or cancelling existing ones before
+processing data is cleared.
 Historical window requests during `RebuildingDatabase` and `PreSeal` fail
 cleanly with `503 Service Unavailable` and a short `Retry-After`. Merely
 catching SQL errors is insufficient: a query against a partly reconstructed

@@ -3,6 +3,21 @@
 > Focused extraction; the current consolidated contract is
 > [handoff-2026-09-20.md](handoff-2026-09-20.md), which prevails on conflicts.
 
+## Scope and ownership
+
+This document owns Supervisor recovery intent, cross-worker commands and
+faults, ResyncEngine preparation and pumping, recovery phase transitions,
+Catchup admission, block coverage before Live, and teardown order.
+
+It coordinates component behavior without redefining it. Node connection,
+subscription, and normalization rules belong to
+[node-service.md](node-service.md); persistence and transaction mechanics to
+[storage.md](storage.md); processor-local admission and overlap rules to
+[block-processing.md](block-processing.md) and
+[vspc-processing.md](vspc-processing.md); and API publication effects to
+[api.md](api.md). Shared value types belong to
+[domain-model.md](domain-model.md).
+
 ## Processing session and resource acquisition — settled
 
 ```rust
@@ -17,9 +32,9 @@ is desired and the engine is idle. The two waits are polled concurrently with
 Supervisor commands/events; the Supervisor main loop must not block.
 
 Partial acquisition may be retained while waiting for the other resource.
-Before starting, recheck the latest desired recovery, engine Idle, and that
-both services still publish those exact acquired RPC and DB `Arc` generations
-as Ready.
+Before starting, recheck that the captured recovery obligation is still the
+latest `desired_recovery`, the engine is Idle, and both services still publish
+those exact acquired RPC and DB `Arc` generations as Ready.
 
 The exact `Arc<ValidatedRpcClient>` and `Arc<ValidatedDbClient>` are
 passed in `Start` and then through the session to all consumers, including
@@ -70,17 +85,65 @@ enum FaultDisposition {
     Require(RecoveryMode),
     Fatal,
 }
+
+enum Component {
+    Supervisor,
+    NodeService,
+    StorageService,
+    ResyncEngine,
+    BlockProcessor,
+    OrphanManager,
+    DependencyResolver,
+    VspcProcessor,
+    ApiService,
+}
+enum ServiceKind { Node, Storage }
+enum NotificationStream { BlockAdded, Vspc, Both }
+enum RecoveryInputKind {
+    RemovedOnlySyntheticVspc,
+    MalformedGetBlocks,
+    MalformedVspcResponse,
+}
+enum PersistenceFault {
+    DefiniteFailure,
+    RetryExhausted,
+    AmbiguousCommit,
+}
+enum FaultKind {
+    ServiceGenerationLost(ServiceKind),
+    NotificationContinuityLost(NotificationStream),
+    RecoveryInputInvalid(RecoveryInputKind),
+    ReconciliationFailed,
+    MaterialityViolation,
+    DependencyUnavailable,
+    Persistence(PersistenceFault),
+    Ownership,
+}
+struct ComponentFault {
+    source: Component,
+    disposition: FaultDisposition,
+    kind: FaultKind,
+    diagnostic: Arc<str>,
+}
+
+struct SupervisorStatus {
+    lifecycle: SupervisorLifecycle,
+    desired_recovery: Option<RecoveryMode>,
+    active_recovery: Option<RecoveryMode>,
+}
 ```
 
-Cross-worker faults use a typed envelope containing the source component,
-`FaultDisposition`, semantic `FaultKind`, and diagnostic text. Required fault
-kinds distinguish service-generation loss, notification-continuity loss,
-invalid recovery input, reconciliation failure, materiality violation,
-confirmed dependency unavailability, persistence outcome, and ownership
-failure. Invalid recovery input distinguishes removed-only synthetic VSPC,
-malformed GetBlocks, and malformed VSPC responses. Persistence distinguishes
-definite failure, retry exhaustion, and ambiguous commit. Only typed fields
-drive control, retry counters, and metrics; diagnostic strings never do.
+`deactivation_requested` is internal and absent from public status.
+`SystemStatus` combines Supervisor, NodeService, StorageService, and processing
+observations; it is eventually consistent and never a synchronization or
+recovery input.
+
+`ComponentFault` is the cross-worker control envelope. Component-local errors
+may retain richer library-specific sources, but must be classified before
+crossing an ownership boundary. The enum sketch fixes the required semantic
+discriminants, not exact module placement or error-library syntax. Only typed
+fields drive control, retry counters, and metrics; diagnostic strings never
+do.
 
 - `Retry` is meaningful only while a recovery is active. It aborts and fully
   deactivates the current attempt; after Idle and backoff, Supervisor reruns
@@ -111,11 +174,11 @@ consume this pump-specific budget.
 The three permitted retries use the first three general recovery delay slots:
 nominally `1s`, `2s`, and `4s`, with the same equal jitter.
 
-Processing semantic transactions retry only PostgreSQL SQLSTATE `40001` and
-`40P01`, retrying the complete transaction at most three times after nominal
-`10ms`, `50ms`, and `250ms` delays with equal jitter. An ambiguous commit is
-never retried. Exhaustion aborts active recovery with `Retry`; in Live it
-requests `Require(Resync)`.
+Storage owns local transaction retries and ambiguous-outcome handling; see
+[storage.md](storage.md#transaction-retries). Once classified across the
+ownership boundary, `Persistence(RetryExhausted)` aborts active recovery with
+`Retry` and requests `Require(Resync)` in Live. An ambiguous commit is never
+blindly reissued.
 
 Fault ownership:
 
@@ -132,14 +195,32 @@ channel, or invalid forward command is a typed ownership/session or fatal
 fault, not ordinary DAG discontinuity. A dropped barrier acknowledgement
 receiver does not cancel the worker's completed teardown transition.
 
+Command mailboxes are unbounded and prioritized, with one logical producer per
+worker. They do not impose data-channel backpressure. Data, notification, and
+worker-to-worker channels are bounded and cancellation-aware. Full means
+`Require(Resync)` when ordered session continuity may have been lost;
+closed/unavailable means a session ownership fault; cancellation during
+expected teardown is not a fault. The graph observer feed is the exception:
+its loss invalidates the API image without disrupting processing.
+
+`Start`, processor `Begin`, `Catchup`, and each processor's `Live` are
+exact-once, state-specific commands. Duplicate or invalid-state delivery is
+Fatal. The two `Live` sends need not be simultaneous; enqueue is not
+completion. Only `Deactivate` and `Shutdown` have completed-barrier
+acknowledgements. `Deactivate` is idempotent to Idle. `Shutdown` is terminal
+and idempotent from every state, supersedes an in-progress Deactivate, and
+acknowledges only after full shutdown. Unexpected command-channel closure is
+Fatal while its worker is meant to live.
+
 `Rebuild` intent must not outlive successful PP-boundary sealing.
 `PpBoundarySealed` is an exact-once upward milestone event, never a command to
-BlockProcessor. After the threshold block commits, BlockProcessor enters
-PostSeal and emits the event to ResyncEngine. ResyncEngine observes it before
-permitting Catchup, sends ApiService the PostSeal publication trigger, and
-propagates the milestone to Supervisor. Supervisor then downgrades both desired
-and active recovery to `Resync`. Entering Live satisfies and clears the
-remaining recovery requirement.
+BlockProcessor. BlockProcessor emits it under its
+[PP-boundary contract](block-processing.md#pp-boundary-phase-behavior--settled).
+ResyncEngine observes it before permitting Catchup, sends ApiService the
+PostSeal publication trigger, and propagates the milestone to Supervisor.
+Supervisor then downgrades both desired and active recovery to `Resync`.
+Duplicate or invalid-state milestone delivery is Fatal. Entering Live satisfies
+and clears the remaining recovery requirement.
 
 Administrative/API-triggered recovery through this same Supervisor path is a
 KGI v2.1 candidate, not a v2 requirement.
@@ -149,7 +230,7 @@ KGI v2.1 candidate, not a v2 requirement.
 Commands:
 
 ```text
-Start { mode, rpc, storage }
+Start { mode, rpc, db }
 Deactivate
 Shutdown
 ```
@@ -182,6 +263,10 @@ Storage reconciliation obtains:
 - committed materialized VSPC sink derived as the maximum-ID materialized
   block with `is_in_vspc = true`, including its ID, hash, and stored DAA
   score.
+
+The storage query and committed-sink derivation are defined in
+[storage.md](storage.md#historical-read-contracts--settled). ResyncEngine owns
+the orchestration and node-side validation below.
 
 An Empty state is genuinely fully empty and requests a distinct Rebuild run
 because PP, score, and sink are absent. A valid schema with inconsistent
@@ -217,87 +302,58 @@ hash other than the requested sink is a malformed RPC response and a
 protocol/session fault. Rebuild occurs as a separate run; there is no internal
 Auto fallback.
 
+The special recovery behavior for an initialized database whose retained
+pruning point is Genesis remains an open requirement; see
+[open-questions.md](../open-questions.md). This section does not infer a policy
+beyond the settled Genesis/ORIGIN representation.
+
 ### Rebuild preparation
 
-The only storage API that clears processing data is:
+ResyncEngine obtains the mandatory current pruning-point block from the run's
+validated RPC generation, then calls the only storage API that clears
+processing data:
 
 ```rust
 rebuild_from_pruning_point(pp: SharedNodeBlock)
     -> MaterializedSyncAnchor
 ```
 
-The pruning point is mandatory. The operation atomically clears processing
-data, restarts identity allocation, creates required PP-boundary identities,
-materializes PP at `(1, 0)`, marks it in VSPC, initializes `levels`, stores
-`db_pp_blue_score`, resets/seeds caches after commit, and returns the anchor.
-When the PP's selected parent is ORIGIN, the transaction creates that
-outside-boundary identity, keeps `selected_parent_id` non-null, and does
-not invent a Genesis direct parent.
-
-Database network binding and schema/migration state survive the rebuild. The
-transaction replaces processing data and PP-derived processing metadata,
-including `db_pp_blue_score`.
+The pruning point is mandatory. Storage owns the transaction, retained network
+binding, PP-boundary representation, metadata replacement, cache publication,
+and returned anchor; see
+[storage.md](storage.md#rebuild-transaction--settled). ResyncEngine must not
+expose or use a general clear-without-PP primitive.
 
 ### API session replacement and publication
 
 Every prepared processing run replaces API publication continuity through the
-existing reliable processing-to-ApiService control path. Its publication state
-machine is:
+existing reliable processing-to-ApiService control path. The lifecycle sends
+these controls in session order:
 
 ```text
-Reset -> Stale
-PublishPostSeal -> Synchronizing
-PublishLive -> Live
+Reset -> PublishPostSeal -> PublishLive
 ```
 
-Reset retires the previous GraphEpoch, stops its deltas, prevents queued
-observer updates from crossing into the new session, and arms buffering for
-the replacement image. Its completed-effect acknowledgement does not mean a
-new image has been published. PostSeal and Live publication controls are
-reliable and exact-once, but processing does not wait for publication
-completion.
+The effects of these controls, including historical-read availability and
+GraphEpoch behavior, are defined in
+[api.md](api.md#reset-and-recovery-time-availability--settled). This document
+owns their send points. `Reset` has a completed-effect acknowledgement;
+`PublishPostSeal` and `PublishLive` are reliable and exact-once, but processing
+does not wait for publication completion.
 
 For ordinary Resync, perform read-only reconciliation first. A failed
 reconciliation requests Rebuild without resetting the API. After successful
 reconciliation, send the session-replacement Reset and await its
 acknowledgement, then send the PostSeal publication trigger before processor
-Begin. Historical DB reads remain available because Resync does not clear
-processing data.
+Begin.
 
 For Rebuild, obtain the pruning point, send the database-rebuild Reset, and
-await its acknowledgement before `rebuild_from_pruning_point`. This Reset also
-closes and drains or cancels historical DB reads. After processor Begin,
-ResyncEngine sends the PostSeal publication trigger only when it observes
-BlockProcessor's definitely committed `PpBoundarySealed` event.
-
-The PostSeal trigger starts the consistent DB snapshot plus buffered-update
-replay. When coherent, ApiService publishes a new GraphEpoch in
-`Synchronizing` state. Rebuild historical reads reopen at that publication.
-Processing does not wait for publication to complete.
+await its acknowledgement before `rebuild_from_pruning_point`. After processor
+Begin, ResyncEngine sends the PostSeal publication trigger only when it
+observes BlockProcessor's definitely committed `PpBoundarySealed` event.
 
 When the global `EnteredLive` conditions are satisfied, ResyncEngine sends the
-Live publication trigger. If the PostSeal image is already active, ApiService
-publishes an atomic lifecycle revision in the same GraphEpoch; it does not
-reload or create another epoch. If loading is still in progress, ApiService
-records the newer target and publishes the completed image directly as Live.
-A later Reset cancels any pending publication and returns the API to Stale.
-
-### Deactivation barrier
-
-Conceptual order:
-
-1. close local routing gates and disable notifications;
-2. cancel and join synchronization producers;
-3. clear engine-local buffers;
-4. send `Deactivate` to processors;
-5. await processor acknowledgements, including descendants;
-6. release all processing-session clones of validated RPC/storage handles;
-7. drop `ProcessingSession`;
-8. emit `Deactivated` / enter `Idle`.
-
-On application shutdown: stop engine/processors first, then NodeService, then
-StorageService.
-
+Live publication trigger.
 
 ## Resync block/VSPC pump — settled
 
@@ -328,6 +384,9 @@ resume the page suffix
 "Sent" means accepted by the BlockProcessor channel, not committed. Processor
 failures either directly request recovery or cascade into an unprocessable
 VSPC backlog that requests recovery.
+
+Each incremental VSPC request uses the preceding response destination as its
+next `low_hash`. This makes the synthetic VSPC stream ordered and gapless.
 
 Notifications go directly to processors; the engine never journals or
 redispatches them.
@@ -427,86 +486,46 @@ the primary path or a fallback can enter Catchup. Eligibility while still
 PreSeal fails the current recovery.
 Resync starts PostSeal only after reconciliation.
 
-The previously explored `unordered_sink_capacity`, tenfold mergeset margin,
-half-window subscription point, X-calls/Y-blocks rules, and explicit epochs are
-rejected as unnecessary complexity.
-
 ### Late notification filtering without epochs
 
 There is no notification epoch because late messages after unsubscribe cannot
 be reliably distinguished from early messages after resubscribe.
 
-Begin resets all processor-local state and drops notifications until Catchup.
-Catchup supplies objective lower bounds:
-
-- BlockProcessor receives a CompactId lower bound associated with the latest
-  already-materialized GetBlocks anchor/page when Catchup was triggered. A
-  known notification below the bound is discarded without overlap credit.
-  Unknown blocks are not discarded by guessed order. Notifications below the
-  sealed PP are also invalid/discardable.
-- VspcProcessor receives the synthetic sink lower bound that triggered
-  Catchup. Older notification destinations are discarded without overlap
-  credit.
-
-This replaces a timer-based grace period. Legitimate late BlockAdded messages
-are otherwise harmless: they deduplicate, orphan, or persist normally.
+Begin resets processor-local state and closes notification gates. Catchup
+supplies the objective block and VSPC lower bounds derived from the current
+session anchors. Their exact filtering and credit rules belong to
+[block-processing.md](block-processing.md#catchup-filtering-and-overlap) and
+[vspc-processing.md](vspc-processing.md#catchup-filtering-crossing-and-overlap--settled).
+The engine does not add a timer-based grace period or transport epoch.
 
 ## Catchup overlap and transition to Live — settled
 
 Each processor owns an `AtomicBool` overlap flag shared read-only with the
-engine. Begin resets it. Catchup begins measurement.
+engine. Begin resets it and Catchup begins measurement. ResyncEngine reads
+both flags only at a fully dispatched GetBlocks-page boundary.
 
 ### Blocks
 
-Track seen hashes with one map and source bitmask, not two sets:
+BlockProcessor owns source accounting, late filtering, overlap proof, and the
+rule that valid orphans do not prevent Live; see
+[block-processing.md](block-processing.md#catchup-filtering-and-overlap).
 
-```text
-SYNTHETIC = 0b01
-NOTIFICATION = 0b10
-```
-
-One normalized GetBlocks response has unique hashes, but the same hash may
-appear in successive responses, especially in a repeated sink anticone.
-ResyncEngine owns an exact Catchup-only `catchup_sent` set, inserts only after
-successful synthetic-channel enqueue, and filters later synthetic repeats
-without overlap credit. Ordinary BlockAdded delivery is expected not to
-duplicate within one subscription. Seeing both source bits for one hash proves
-overlap and sets the block overlap flag.
-
-Evaluate the flag only at a fully dispatched GetBlocks-page boundary. Once
-overlap is proven, no buffered suffix from an undispatched page remains; a page
-already returned by GetBlocks must be fully dispatched before it can be
-dropped from engine state.
-
-Orphans do not prevent transition to Live.
+ResyncEngine owns an exact Catchup-only `catchup_sent` set. Initialize it on
+Catchup, insert a hash only after successful synthetic-channel enqueue, and
+filter later synthetic repeats before dispatch without granting overlap
+credit. Clear it on a new Begin, successful global Live entry, or Deactivate.
+A returned GetBlocks page must be fully dispatched before the engine observes
+overlap or abandons its suffix.
 
 ### VSPC
 
-While the coordinated Catchup pump supplies synthetic changes, those gapless
-ordered changes have commit priority. Notifications are still consumed,
-resolved, filtered, and retained as needed to establish overlap, but do not
-overtake an available synthetic predecessor. A temporary empty synthetic queue
-does not change that rule. At ordinary eligibility, ResyncEngine stops/joins
-synthetic VSPC production and enqueues VspcProcessor Live; that transition
-abandons synthetic input and makes notifications authoritative.
-
-Notifications below the Catchup synthetic-sink lower bound are latecomers and
-are discarded without overlap credit. A notification transition can cross the
-committed synthetic sink; equality of its destination is not required. The
-accepted overlap logic first discards a resolved destination at or below the
-committed sink under the lower-bound/history rules. Destination equality can
-earn eligible overlap credit but never creates an empty normalized change.
-For a destination above the sink, structural crossing requires the exact
-committed sink in `added`; drop `removed` and the prefix through that sink,
-leaving a necessarily nonempty added-only suffix. Otherwise only an original
-source equal to the committed sink is directly actionable. Order comparison
-or sink occurrence in `removed` does not prove a crossing, and a pending
-candidate must not block a later actionable one. An unresolved old
-destination cannot earn overlap credit.
-
-Once notification history provably meets/crosses the committed synthetic
-history, the VSPC overlap `AtomicBool` is set. Gapless notification flow then
-guarantees eventual reachability of the synthetic point.
+VspcProcessor owns synthetic priority, notification retention, lower-bound
+filtering, structural crossing, overlap proof, and its component-local Live
+behavior; see
+[vspc-processing.md](vspc-processing.md#catchup-filtering-crossing-and-overlap--settled)
+and [vspc-processing.md](vspc-processing.md#component-local-live-transition--settled).
+ResyncEngine only decides when to end synthetic production and enqueue that
+component's Live command.
 
 ### Ordinary eligibility and coverage admission
 
@@ -523,19 +542,18 @@ the block-coverage phase, but not BlockProcessor Live or global `EnteredLive`.
 
 Stop issuing VSPC V2 calls and sending new synthetic changes, stop/join that
 producer, and successfully enqueue VspcProcessor's existing Live command
-before the first coverage request. VspcProcessor clears/discards queued
-synthetic input, ignores that input for the rest of the session, and begins
-committing actionable notifications under its ordinary Live rules.
-BlockProcessor remains in Catchup. Available block material permits VSPC sink
-progress; unavailable material keeps the affected notification in
-pre-resolution readiness waiting. A chain member confirmed nonmaterialized
-for an actionable transition remains a direct Rebuild fault.
+before the first coverage request. BlockProcessor remains in Catchup.
+VspcProcessor's reaction and readiness behavior are defined in its focused
+contract; the coverage phase sends it no checkpoint, barrier, or coverage
+state.
 
 Capture a fixed `GetBlockDagInfo.tip_hashes` set `T` after subscriptions are
-Enabled and determine in one batch its already-materialized subset `M`. Do not
-refresh `T`. The pinned upstream ordering commits each body-tip-store update
-before emitting its BlockAdded notification, so blocks committed after the
-snapshot are protected by the active subscription.
+Enabled and determine in one batch its strictly materialized subset `M`. Only
+the tip vector is the coverage snapshot; other response fields are not treated
+as one atomic combined snapshot. Do not refresh `T`. The pinned upstream
+ordering commits each body-tip-store update before emitting its BlockAdded
+notification, so blocks committed after the snapshot are protected by the
+active subscription.
 
 Run at least one additional block-only GetBlocks request using the block scan's
 existing cursor. Preserve full-page dispatch and the Catchup-only dedup set.
@@ -565,8 +583,8 @@ T ⊆ M ∪ catchup_sent
 This establishes gapless admission: every retained pre-snapshot body tip is
 materialized or has entered BlockProcessor, so missing ancestry will become
 explicit queued/orphan dependency work. It does not require those blocks or
-orphans to finish before Live. If the capped page completes without satisfying
-the invariant, request `Require(Resync)`. The next recovery attempt derives its
+orphans to finish before Live. If the cap is exhausted without satisfying the
+invariant, request `Require(Resync)`. The next recovery attempt derives its
 starting sink from current committed database state.
 
 On Live:
@@ -576,8 +594,6 @@ On Live:
   Live;
 - BlockProcessor retains valid queued/orphan work.
 
-Any latent inconsistency will be detected by the normal Live invariants and
-will request recovery.
 `EnteredLive` is emitted only after the block coverage producer is
 stopped/joined, the earlier VspcProcessor Live enqueue succeeded, and
 BlockProcessor Live is successfully enqueued. It does not mean queues or
@@ -586,12 +602,27 @@ ApiService the Live publication trigger. If coverage exhausts its budget, do
 not send BlockProcessor Live; request Resync and deactivate the component-local
 VSPC Live run normally.
 
-## Short node IBD while Live — settled stance
+Normal processor and stream invariants remain active in Live and request their
+settled recovery dispositions when violated.
 
-The current design is considered sufficiently resistant to a rare short IBD
-episode after KGI is already Live: connection/notification failures trigger
-recovery, while normal invariants reject inconsistent progress. Do not add a
-complex continuous IBD mode for v2.
+## Teardown and delivery semantics — settled
 
-A low-frequency Live VSPC consistency probe is recorded as a KGI v2.1
-candidate.
+On Deactivate, ResyncEngine performs this barrier in order:
+
+1. close local routing gates and disable notifications;
+2. cancel and join synchronization producers;
+3. clear engine-local buffers;
+4. send `Deactivate` to processors;
+5. await processor acknowledgements, including descendant barriers;
+6. release every processing-session clone of the validated RPC and DB handles;
+7. drop `ProcessingSession`; and
+8. emit `Deactivated` and enter Idle.
+
+The owning services may retain their validated generations. Shutdown stops
+engine and processors before NodeService and then StorageService. Channel
+failures follow the bounded-delivery and ownership semantics above;
+component-specific draining duties remain in the focused processor documents.
+
+The graph observer path is deliberately separate: observer loss invalidates
+and reloads the API image without interrupting processing. Its behavior is
+defined in [api.md](api.md#in-process-api-and-graph-observer-feed--settled).
