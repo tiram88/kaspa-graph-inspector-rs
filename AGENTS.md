@@ -45,10 +45,11 @@ non-normative and do not participate in architecture precedence.
 ## rusty-kaspa issue records
 
 `docs/rk-issues/` contains local, one-file-per-issue records for rusty-kaspa
-issues discovered during KGI v2 work. The entire directory is ignored by Git
-and remains untracked. Architecture, Implementation, and Review roles must
-ignore its contents unless the user explicitly asks them to work on a specific
-issue record. These records are non-normative and do not participate in KGI
+issues discovered during KGI v2 work. Version control tracks the complete
+directory so the issue register is visible to the project, but no collaboration
+role owns it. Architecture, Implementation, and Review roles must ignore its
+contents unless the user explicitly asks them to work on a specific issue
+record. These records are non-normative and do not participate in KGI
 architecture, implementation, or review precedence.
 
 ## Temporary architecture reconciliation hold
