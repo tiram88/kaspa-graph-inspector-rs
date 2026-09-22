@@ -20,7 +20,7 @@ coordinate `(level = 1, slot = 0)`.
 ## Optional destructive administration
 
 Decide whether KGI v2 needs a separate explicit administrative database reset.
-Any accepted operation must be bounded and deliberate. It must not introduce a
-persistent `--reinitialize-db --yes` startup option that erases data again on
-every unattended service restart. Normal `--initialize-db` remains idempotent
-and non-destructive for a compatible initialized database.
+Any accepted operation must not introduce a persistent
+`--reinitialize-db --yes` startup option that erases data again on every
+unattended service restart. Normal `--initialize-db` remains idempotent and
+non-destructive for a compatible initialized database.

@@ -34,8 +34,11 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
 3. A pinned fixture for
    `min_confirmation_count = None` and
    `data_verbosity_level = Some(RpcDataVerbosityLevel::None)` that checks the
-   minimal acceptance-data envelope, any acceptance-data length limit, and an
-   advancing `added.last()` cursor for every nonempty response.
+   exact `10 * mergeset_size_limit` added chain-path batch size, the complete
+   `removed` suffix that this batch size does not limit, the minimal
+   acceptance-data envelope, any further shortening of `added` only to a
+   complete prefix, and an advancing `added.last()` cursor for every nonempty
+   response.
 4. Mocked removed-only notification and VSPC V2 responses. Assert the
    source-specific dispositions: a notification requires Resync; a synthetic
    page does not advance its cursor and uses the bounded whole-attempt Retry
@@ -82,9 +85,9 @@ outcomes around the seal and assert that no unproven milestone is emitted and
 the next run derives truth solely from committed storage.
 
 Verify the [atomic VSPC transaction](storage.md#atomic-vspc-transaction--settled)
-for one ordered cache-first reorg-member ID batch, strict-`<` sink-preserving
-pruning, disabled Catchup pruning, merge-set members represented only by
-boundary identity, and atomic publication of level scores.
+for source continuity, direct-chain materiality, duplicate/intersection
+rejection, atomic membership and coloring changes, merge-set members
+represented only by boundary identity, and final level-score publication.
 
 Verify [transaction retries](storage.md#transaction-retries) with PostgreSQL
 integration fixtures. Only SQLSTATE `40001` and `40P01` retry the complete
@@ -195,6 +198,11 @@ with:
 
 - removed/added source and destination derivation;
 - the added-only path with no database source;
+- an actionable reorg resolving `removed` followed by `added` through one
+  ordered, cache-first storage batch;
+- strict-`<` sink-preserving history pruning before Catchup, at the
+  Catchup-to-Live transition, and during Live, with pruning disabled throughout
+  Catchup;
 - bounded pending order where one unready candidate does not block a later
   actionable candidate;
 - structural crossing through `added` only;

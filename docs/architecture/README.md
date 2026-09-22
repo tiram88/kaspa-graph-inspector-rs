@@ -85,9 +85,12 @@ The dispatch follows these rules:
    VspcProcessor behaves in those phases.
 6. Verification requirements live in `verification.md` and point to the
    contract under test. They do not restate that contract as a second source.
-7. Decision records capture outcome, status, and rationale. The complete
-   current behavior is written in the owning architecture document in the
-   same change that settles the decision.
+7. The decision registers record each item's status, summarize what was
+   decided or remains unresolved, and link to its focused owner. The focused
+   owner is the durable source of the complete current contract and the
+   rationale needed to interpret it. Standalone ADRs may preserve historical
+   decision rationale but do not become competing behavioral owners. Settling
+   a decision updates its focused owner in the same change.
 8. Historical handoffs and audits provide provenance only and never resolve a
    conflict with current architecture.
 

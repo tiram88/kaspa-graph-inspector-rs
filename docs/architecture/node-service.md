@@ -189,6 +189,10 @@ For `GetVirtualChainFromBlockV2`, request
 `min_confirmation_count = None` and
 `data_verbosity_level = Some(RpcDataVerbosityLevel::None)`. Rusty-kaspa master
 `c338d495` preserves a minimal acceptance-data envelope and an advancing
-`added.last()` cursor for this combination. Its acceptance-data budget may
-shorten `added` to a complete prefix. The pinned evidence requirement is
-defined in [verification.md](verification.md#node-and-upstream-rpc-fixtures).
+`added.last()` cursor for this combination. The RPC's exact added chain-path
+batch size is `10 * mergeset_size_limit`. This limit bounds `added`, while the
+complete `removed` suffix is not batch-limited. The same numeric budget bounds
+merged blocks loaded for acceptance data; the resulting acceptance-data
+length may shorten `added`, but only to a complete prefix. The pinned evidence
+requirement is defined in
+[verification.md](verification.md#node-and-upstream-rpc-fixtures).

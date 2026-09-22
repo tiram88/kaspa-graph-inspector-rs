@@ -441,7 +441,9 @@ catchup_max_daa_gap = max(
 
 The second term provides at least one complete GetBlocks core page of
 transition granularity. The values are 181 at 1 BPS, 300 at 10 BPS, and 960
-at 32 BPS; all are below the VSPC V2 batch size.
+at 32 BPS; all are below NodeService's exact
+[`10 * mergeset_size_limit` VSPC V2 added batch
+size](node-service.md#rpc-normalization).
 
 If the marker is `Present`, the fresh score is not lower, and the gap is at
 most the threshold, queue both Catchup commands and complete subscription

@@ -2,7 +2,12 @@
 
 This directory records KGI v2 decisions by current status. A status file is a
 register, not a second copy of the architecture. Complete current behavior
-belongs in the focused document named by the entry.
+and the rationale needed to interpret it belong in the focused document named
+by the entry. The registers record each item's status, summarize what was
+decided or remains unresolved, and link to its focused owner. Standalone ADRs
+may preserve historical decision rationale, but they do not become competing
+behavioral owners. Rejected and superseded entries may retain the reason a
+former design must not return.
 
 | File | Meaning |
 |---|---|
