@@ -75,10 +75,11 @@ state with a private mutex.
 Enable ordering:
 
 ```text
-enable router
+send Catchup to both processors
 start BlockAdded remotely
 start VirtualChainChanged remotely
-publish Enabled only when both succeeded
+enable router only when both succeeded
+publish subscription Enabled only when both succeeded
 ```
 
 Disable ordering:
@@ -89,7 +90,18 @@ stop both remote subscriptions
 ```
 
 Subscription changes are all-or-nothing. Partial failure makes the connection
-state uncertain and retires the validated handle.
+state uncertain and retires the validated handle if rollback cannot be
+proven. Callbacks received while the router remains Disabled during remote
+activation are intentionally dropped; they receive no Catchup overlap
+credit and do not themselves request recovery. Synthetic GetBlocks/VSPC
+production continues until ordinary overlap is demonstrated. Before Live,
+ResyncEngine captures a fixed body-tip snapshot and enforces the bounded
+coverage invariant defined in `processing-lifecycle.md`; that gate accounts
+for activation-time BlockAdded drops, including a block outside the
+then-selected past. ResyncEngine stops synthetic VSPC production for that
+block-only coverage; VspcProcessor receives no coverage control. NodeService
+does not replay dropped callbacks.
+Disabling is an immediate local cutoff, not a quiescence or transport fence.
 
 Only NodeService sees raw rusty-kaspa notification types. The only VSPC payload
 outside NodeService is:
@@ -114,3 +126,8 @@ struct VspcChange {
 
 KGI requests full RPC blocks directly. Fetching hashes and then calling
 `GetBlock` one by one has no accepted benefit for this local-node deployment.
+For `GetVirtualChainFromBlockV2`, request
+`min_confirmation_count = None` and
+`data_verbosity_level = Some(RpcDataVerbosityLevel::None)`. Rusty-kaspa master
+`c338d495` preserves a minimal acceptance-data envelope and an advancing
+`added.last()` cursor for this combination; retain a pinned regression fixture.

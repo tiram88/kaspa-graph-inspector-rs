@@ -9,7 +9,7 @@ For a Rebuild in `PreSeal`:
 
 ```text
 boundary_seal_blue_score =
-    node_pp.blue_score + anticone_finalization_depth
+    db_pp_blue_score + anticone_finalization_depth
 ```
 
 This deliberately simple BlueScore approximation is accepted.
@@ -22,6 +22,9 @@ anticone arrives before PP-future blocks that merge it.
 The first block with blue score at or above the threshold is processed under
 strict policy. Only after that block commits does BlockProcessor enter `PostSeal`
 and emit `PpBoundarySealed`.
+Rebuild cannot enter Catchup before this definite seal; an early Catchup
+trigger fails the recovery attempt. Resync begins PostSeal only after
+reconciliation.
 
 After sealing, every resync cycle is strict. Before Catchup, a missing
 dependency is a resync failure, not an orphan. In Catchup and Live, ordinary
@@ -30,6 +33,9 @@ orphans are allowed.
 The observed retained PP anticone is complete enough for KGI visualization
 semantics. No placeholder `blocks` rows and no placeholder promotion are
 needed; outside-boundary identities live only in `block_identifiers`.
+PP bootstrap interns ORIGIN as a permanent outside-boundary identity when
+it is the PP's synthetic selected parent. Genesis has no actual direct
+parents; ordinary non-Genesis blocks still require a selected direct parent.
 
 ## BlockProcessor — settled
 
@@ -68,6 +74,12 @@ Notification gating:
   received notifications are discarded immediately rather than accumulating
   for later ambiguity.
 
+ResyncEngine, rather than BlockProcessor, owns the exact Catchup-only set of
+synthetic hashes successfully accepted by the block channel. BlockProcessor's
+source-bit map remains responsible for overlap. GetBlocks hashes can repeat
+across responses; engine-filtered synthetic repeats are harmless and earn no
+overlap credit. The sent set is cleared on Live, Begin, and Deactivate.
+
 Materialization success, including dedup of an already materialized block,
 returns its ID. BlockProcessor sends the resulting `PersistedBlock`
 asynchronously to VspcProcessor and OrphanManager.
@@ -96,7 +108,9 @@ roughly one quarter or one third of capacity. Exact capacity and threshold are
 implementation-phase decisions.
 
 Notification loss is not treated as an ordinary silent event: disconnect or a
-full bounded notification channel triggers recovery. Therefore no independent
+full bounded notification channel triggers recovery. Callbacks intentionally
+dropped during subscription activation are the explicit exception and are
+covered by the fixed body-tip Live-admission gate. Therefore no independent
 age fallback is required merely to rescue an isolated orphan.
 
 ## DependencyResolver — settled
@@ -114,6 +128,16 @@ driven by OrphanManager.
 - results go to BlockProcessor's intern/resolved channel;
 - deactivation cancels/joins tasks and releases all session RPC clones before
   acknowledging.
+
+`resolution_pending` remains set after an RPC returns until the manager
+observes `AddOrphan` or `BlockPersisted` for that hash. RPC completion alone
+must not reopen the request gap. A resolver-confirmed unavailable dependency
+requests `Require(Rebuild)` because DB contents can no longer be trusted
+against node state; RPC/connection failure is not that confirmation. A full
+bounded work channel requests Resync; a closed one is a session fault.
+During Deactivate, BlockProcessor drains/discards child results while
+cancelling and joining children so a full result channel cannot deadlock the
+barrier.
 
 There is no `Satisfied(hash)` queue protocol. `resolution_pending` is a set,
 not a queue or map.

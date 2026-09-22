@@ -23,12 +23,14 @@ source =
     selected_parent(added.first()),         otherwise
 
 destination =
-    added.last(),                           if added is nonempty
-    selected_parent(removed.last()),        otherwise
+    added.last()
 ```
 
-Every dispatched change is nonempty. An empty V2 response is synchronization
-information, not a VSPC event.
+Every admitted nonempty change must have nonempty `added`. A removed-only
+change is a typed unsupported invariant fault; it has no invented fallback
+destination. Its upstream reachability remains to verify. An empty V2 page is
+synchronization information, not a VSPC event. A wholly empty change remains
+deferred.
 
 Pending changes are stored as `VspcChange` values directly. Ready representation:
 
@@ -47,6 +49,9 @@ the transaction.
 
 Resolution handles both event-before-block and block-before-event. Use:
 
+- one ordered synthetic FIFO;
+- raw unresolved notifications keyed by destination hash;
+- resolved candidates ordered by destination consensus order;
 - pending ID -> pending change;
 - missing hash -> waiting pending IDs;
 - hash -> recent `PersistedBlock` history;
@@ -54,6 +59,10 @@ Resolution handles both event-before-block and block-before-event. Use:
 
 This dual index is intentional. A `HashMap<BlockHash, Vec<VspcChange>>`
 alone loses multi-dependency and sequencing structure.
+These pending structures share one capacity bound. Resolve both endpoints
+before readiness: an unresolved old notification must not block a later
+actionable one or earn overlap merely from its destination hash. Distinct
+incompatible resolved candidates request Resync.
 
 Committed VSPC sources and destinations are monotonic. For committed events:
 
@@ -83,7 +92,57 @@ them, nonmaterialized merge-set identities referenced by added blocks are
 outside the retained boundary and can be ignored during coloring.
 
 A nonmaterialized block named directly in `added` or `removed` violates the
-invariants and triggers recovery.
+invariants and directly requests `Require(Rebuild)`: the DB can no longer be
+trusted against node state. An outside-boundary identity named only in an
+added block's merge set is ignorable during coloring.
+
+For an actionable reorg, call `ValidatedDbClient::resolve_materialized_ids`
+once for `removed` followed by `added`. The ordered, cache-first result
+preserves repeated inputs and distinguishes absent from identity-only
+members. Added-only changes resolve from history and make no DB lookup.
+
+### Catchup crossing and overlap
+
+While the coordinated Catchup pump supplies synthetic changes, commit that
+ordered stream with priority; a notification must not overtake an available
+synthetic predecessor. Once synthetic production stops, ordinary readiness
+processing may commit retained/new actionable notifications without any
+coverage-specific command. For committed synthetic sink `C`, classify a
+resolved notification in this order:
+
+1. Resolve `D = added.last()`. If `D.order <= C.order`, discard the
+   notification under the lower-bound rules and give overlap credit only when
+   accepted history proves the meeting. `D == C` is a discard, not an empty
+   normalized change.
+2. If `D.order > C.order` and `C.hash` occurs in `added`, discard `removed`
+   and the `added` prefix through `C`, then apply the necessarily nonempty
+   added-only suffix sourced at `C`.
+3. Otherwise, derive and resolve the original source. Apply the original
+   change only if that source equals `C`.
+4. Otherwise retain it pending and continue scanning later candidates.
+
+A sink in `removed` or a mere order comparison does not establish
+continuity. Resolve both endpoints of the resulting actionable change before
+readiness. Keep unresolved notifications bounded and without overlap credit.
+
+### Operation during block-coverage admission
+
+Ordinary block/VSPC overlap at a complete GetBlocks-page boundary starts the
+bounded block-coverage phase; it does not enter Live immediately. ResyncEngine
+stops issuing VSPC V2 calls and producing new synthetic changes.
+
+VspcProcessor is not concerned with that phase. It receives no coverage
+command or barrier and creates no special checkpoint. Its ordinary ordered
+readiness and commit logic continues over synthetic changes already accepted
+and retained/new notification changes. When all required block material is
+available, the committed sink can keep advancing. Missing material keeps the
+affected change in pre-resolution readiness waiting while block processing and
+dependency resolution continue. This does not weaken the direct Rebuild fault
+when strict resolution of an actionable transition confirms a nonmaterialized
+chain member.
+
+On coverage-page cap exhaustion, `Require(Resync)` starts later recovery from
+the sink actually committed in database state at that time.
 
 ### Atomic VSPC transaction
 

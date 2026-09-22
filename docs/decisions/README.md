@@ -23,12 +23,35 @@ The following rejected and superseded designs are already settled and must not b
   `BoundaryMaterialized` invariant.
 - Explicit notification epochs: impossible to assign reliably and unnecessary
   with Begin/Catchup gates and lower bounds.
-- Large sink-anticone capacity/window calculation for Catchup: replaced by
-  GetBlocks monotonicity/underfill plus empty-VSPC fallback.
+- Large sink-anticone capacity/window calculation and a fixed X/Y page rule
+  for Catchup proximity/overlap: replaced by a rolling RPC sink marker
+  established by the gapless VSPC pump and a page-aware DAA threshold. The
+  global-maximum-position, normalized-length `< 3`, and empty-VSPC conditions
+  remain independent fallbacks. The network-scaled page cap after ordinary
+  Live eligibility is a body-tip coverage budget, not a Catchup trigger.
+- Local or adjacent GetBlocks order decrease as a Catchup trigger: rejected.
+  Only the position of the page's global maximum is relevant to the accepted
+  order-based fallback.
+- Dedicated recovery or a separate completeness gate for a GetBlocks response
+  assembled across changing virtual views: rejected. The rolling sink is the
+  normal Catchup path; a material omission exposed during strict pre-Catchup
+  processing requests `Require(Resync)` through the existing fault path.
+- Deriving a destination from a removed-only VSPC change: unsupported
+  invariant fault; admitted nonempty changes require `added.last()`.
+- Enabling local notification routing before both remote subscriptions have
+  started: routing remains Disabled through activation, dropping callbacks
+  until both starts succeed.
+- Blanket rule that only ResyncEngine may request Rebuild: a nonmaterialized
+  VSPC chain member or resolver-confirmed unavailable dependency requests it
+  directly.
 - No-unresolved-orphans condition for Live: unnecessary.
+- Entering Live from overlap flags alone: superseded by the fixed body-tip
+  coverage invariant. ResyncEngine stops producing synthetic VSPC changes at
+  the ordinary eligibility boundary. An acknowledged VSPC freeze/barrier and
+  special coverage checkpoint are rejected: VspcProcessor receives no
+  coverage control and continues its ordinary processing.
 - `Auto` recovery mode: removed; Resync failure explicitly requires Rebuild.
 - Dedicated persisted VSPC checkpoint/sink table: derived from block state.
 - Dedicated persisted PP identity by CompactId: DB PP is `(1, 0)`.
 - `ReadyAddedBlock`: unnecessary; Storage loads merge sets transactionally.
 - `ProcessingResources` wrapper: unnecessary.
-

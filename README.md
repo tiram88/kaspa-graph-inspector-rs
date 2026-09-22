@@ -1,6 +1,9 @@
 # kaspa-graph-inspector-rs
 Kaspa Graph Inspector v2
 
-Current accepted architecture: [20 September 2026 handoff](docs/architecture/handoff-2026-09-20.md).
-The earlier focused documents and 17 September handoff remain historical
-references where later accepted decisions supersede them.
+Current architecture draft: [20 September 2026 handoff](docs/architecture/handoff-2026-09-20.md)
+and its [focused documents](docs/architecture/overview.md). The
+[post-H1 reconciliation](docs/audits/reconciled-2026-09-20.md) has been applied;
+the [implementation hold](AGENTS.md) remains until this architecture is
+reviewed and committed as a stable baseline. The 17 September handoff is
+historical provenance.

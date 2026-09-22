@@ -25,6 +25,29 @@ shutdown() -> Result<(), StorageError>
 caches. A processing session uses one exact storage generation; it is never
 rebound underneath a running session.
 
+Startup distinguishes Uninitialized (no recognized KGI schema or binding),
+Empty (valid v2 schema bound to the exact CLI network but no processing data),
+Initialized (coherent PP, score, and VSPC sink), and inconsistent or
+unsupported state. `--initialize-db` initializes only Uninitialized and is
+idempotent for a compatible Empty or Initialized DB. Without it, first
+initialization requires interactive confirmation; noninteractive startup
+fails with an actionable confirmation error. Network mismatch, v1, unknown,
+newer, and partial schemas are rejected rather than rebound or silently
+reset. Structurally valid but inconsistent processing contents request
+Rebuild, distinct from Empty. `--clear-db` requests processing-data Rebuild
+under the existing network binding. A persistent destructive
+`--reinitialize-db --yes` startup flag is forbidden; separate administrative
+reset is deferred.
+
+StorageService holds a dedicated PostgreSQL session advisory lock before
+initialization, migration, or validation and throughout the validated client
+lifetime. Recheck state under the lock before first initialization. Losing
+the lock connection retires the client and active processing session.
+Supported older v2 schemas migrate forward in ordered transactions under
+the lock; no automatic down, online, or v1-to-v2 migration is permitted.
+API status/info relays the currently validated node server version; persisting
+a last-known version is not a correctness prerequisite.
+
 Any connection-level storage failure terminates the current processing
 session, but does not retroactively revoke in-flight operations. An operation
 reports its actual outcome:
@@ -77,6 +100,14 @@ The stronger materiality invariant is:
 
 The existence of a database row or CompactId alone is insufficient.
 
+PP bootstrap interns synthetic ORIGIN as a permanent outside-boundary
+identity when the PP uses it as selected parent. The non-null
+`blocks.selected_parent_id` then references ORIGIN, including for Genesis;
+ORIGIN is not an actual direct parent. A present Genesis has zero actual
+direct parents, which the API preserves independently of visible edges. This
+marker requires neither a persisted network Genesis hash nor a dedicated
+Genesis-hash API endpoint.
+
 ```rust
 enum BlockPresence {
     Absent,
@@ -114,7 +145,8 @@ blocks(
 
 levels(
     level ... PRIMARY KEY CHECK (level > 0),
-    size  ... NOT NULL CHECK (size > 0)
+    size  ... NOT NULL CHECK (size > 0),
+    daa_score BIGINT NOT NULL DEFAULT 9223372036854775807
 )
 
 parents(
@@ -136,6 +168,11 @@ The API filters `parent_level > 0` for visible DAG edges.
 
 Blue score is not stored for every block merely to recover the DB PP boundary;
 `db_pp_blue_score` is metadata. The DB PP itself is fetched by `(1, 0)`.
+`levels.daa_score = i64::MAX` means no VSPC member; new levels start with
+this sentinel. At most one current VSPC member occupies a level, and a reorg
+can leave that level empty. Valid DAA queries satisfy `0 <= q < i64::MAX`;
+the public floor lookup selects greatest score `<= q`, then highest level on
+a tie. Level and window reads use one coherent revision.
 
 ## Storage caches — settled
 
@@ -157,6 +194,14 @@ Caches:
 Do not cache negative identity results. Mutable colors and VSPC membership are
 not cached. Cold identity batches use a left join against `blocks` to obtain
 the materialized bit efficiently. Cache publication occurs after commit only.
+
+`ValidatedDbClient::resolve_materialized_ids` takes one ordered batch of
+hashes and returns one ID per input position, including repeats. It checks
+cache hits, uses at most one SQL read for misses, and never writes, interns,
+or promotes identities. Missing and identity-only hashes produce distinct
+typed errors; only materialized hashes succeed. Actionable VSPC reorgs pass
+`removed` followed by `added` in this single batch. Added-only changes use
+VSPC history without a DB lookup.
 
 ## Block materialization transaction — settled
 
@@ -203,13 +248,16 @@ Validation includes:
 
 - no self-parent/reference contradiction;
 - direct parents are unique;
-- selected parent is a direct parent;
+- selected parent is a direct parent for ordinary non-Genesis blocks;
 - an already materialized own hash is a dedup outcome;
 - an identity-only own hash is an invariant violation.
 
 Strict policy requires every referenced hash to be materialized and creates no
 boundary identities. Permissive policy may create permanent identity-only rows
 for missing references, then materializes the block itself.
+The PP bootstrap path handles ORIGIN separately, allowing a non-null selected
+parent outside the actual direct-parent list. Genesis has no actual direct
+parents. Ordinary materialization does not use that exception.
 
 Coordinate rule:
 
@@ -230,7 +278,7 @@ parent-derived rule.
 Allocate slots atomically, conceptually:
 
 ```sql
-INSERT INTO levels(level, size) VALUES ($1, 1)
+INSERT INTO levels(level, size, daa_score) VALUES ($1, 1, $no_vspc)
 ON CONFLICT(level)
 DO UPDATE SET size = levels.size + 1
 RETURNING size - 1;
@@ -250,3 +298,8 @@ struct PersistedBlock {
 
 Every `PersistedBlock` is non-Genesis and therefore has an unconditional
 selected parent. Genesis is handled only by the special PP/bootstrap path.
+
+The atomic VSPC transaction updates affected `levels.daa_score` rows to
+their final VSPC score or sentinel after all removals and additions. It may
+leave a level without a VSPC member. Normal block materialization does not
+set a real level DAA score.

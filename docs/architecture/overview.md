@@ -76,11 +76,12 @@ single transient processing task.
 Supervisor
 ├── Arc<NodeService>
 ├── Arc<StorageService>
-└── Arc<ResyncEngine>
-    ├── Arc<BlockProcessor>
-    │   ├── OrphanManager
-    │   └── DependencyResolver
-    └── Arc<VspcProcessor>
+├── Arc<ResyncEngine>
+│   ├── Arc<BlockProcessor>
+│   │   ├── OrphanManager
+│   │   └── DependencyResolver
+│   └── Arc<VspcProcessor>
+└── Arc<ApiService> -> HeadGraphCache
 ```
 
 Lifecycle control flows from parent to child. Reliable faults and milestones
@@ -89,6 +90,11 @@ flow from child to parent. Avoid strong-reference cycles.
 `ResyncEngine` owns the processors. Using `Arc<Component>` rather than a thin
 handle is acceptable as an implementation choice, provided lifecycle and
 ownership contracts remain clear.
+NodeService owns node state, StorageService owns storage state, ResyncEngine
+owns processing state, and Supervisor owns orchestration state. Their
+statuses are observations, not shared lifecycle authority. ApiService is
+an in-process read-only observer with its own resource budgets; graph
+observer failure cannot fault processing.
 
 Notifications never pass through `ResyncEngine`:
 
@@ -100,6 +106,14 @@ NodeService::NotificationRouter
 
 Each processor aggregates its channels in one event loop, preserving local
 sequential state transitions while allowing concurrent producers.
+
+Catchup overlap establishes ordinary Live eligibility. Before actual Live
+admission, ResyncEngine stops producing synthetic VSPC changes and runs a
+bounded block-only coverage phase against one fixed `GetBlockDagInfo` body-tip
+snapshot. VspcProcessor is unaware of this phase and continues its ordinary
+processing. Every captured tip must already be strictly materialized or have
+been successfully enqueued from GetBlocks; otherwise the page budget ends in
+Resync.
 
 ## Core identities and coordinates — settled
 

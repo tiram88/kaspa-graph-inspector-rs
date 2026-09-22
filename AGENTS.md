@@ -13,7 +13,7 @@ Before changing or reviewing this repository, read in this order:
 5. `docs/open-questions.md` when the work touches an unresolved choice.
 6. `docs/implementation-status.md` and relevant reports in `docs/reviews/` for non-normative project state.
 
-`docs/architecture/handoff-2026-09-17.md` is the verbatim source handoff for the original bootstrap. Consult it for provenance, but its superseded wording is not the current contract. Focused documents were extracted from that bootstrap and have not all been updated after the 20 September review. Where they differ, the later accepted decisions recorded in `handoff-2026-09-20.md` control; flag any ambiguity rather than blending conflicting rules.
+`docs/architecture/handoff-2026-09-17.md` is the verbatim source handoff for the original bootstrap. Consult it for provenance, but its superseded wording is not the current contract. Focused documents were extracted from that bootstrap and cover their named components; the consolidated handoff contains broader cross-component and API contracts. Where they differ, the later accepted decisions recorded in `handoff-2026-09-20.md` control; flag any ambiguity rather than blending conflicting rules.
 
 Normative precedence is:
 
@@ -23,6 +23,38 @@ Normative precedence is:
     > implementation and tests
     > implementation-status and review notes
 ```
+
+## Audit material
+
+`docs/audits/` contains historical reconciliation evidence and working
+reports. Audit files are non-normative: they do not participate in
+architecture precedence and must not be used as implementation or review
+contracts. Trace every accepted audit outcome to the current architecture,
+an accepted ADR, or `docs/open-questions.md` as appropriate.
+
+Version control tracks the complete `docs/audits/` directory for historical
+provenance. Tracking an audit does not give it normative authority.
+
+## Chat archives
+
+`docs/chats/` contains local chat transcript archives used only as provenance
+when an architecture reconciliation explicitly requires them. The entire
+directory is ignored by Git and remains untracked. Chat archives are
+non-normative and do not participate in architecture precedence.
+
+## Temporary architecture reconciliation hold
+
+The 20 September handoff is being verified against
+`docs/chats/initial_chat.md` before production implementation begins. For
+decisions made before that handoff, the last clearly accepted position in the
+original exchange is presumed to reflect the intended design unless a later
+accepted decision supersedes it. If that evidence conflicts with the handoff,
+do not implement the disputed rule.
+Architecture must verify the decision and record its resolution in a focused
+architecture document or ADR, then reconcile the handoff. The transcript and
+audit reports are evidence for this work, not standalone implementation
+specifications. Production code, tests, and migrations remain gated until the
+reconciled architecture is reviewed and committed as a stable baseline.
 
 If repository evidence conflicts with accepted architecture, flag the conflict. Do not resolve it implicitly. Record accepted architecture changes immediately in a focused architecture document or ADR.
 
