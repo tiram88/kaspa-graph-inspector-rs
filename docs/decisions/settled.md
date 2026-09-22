@@ -7,7 +7,7 @@ mechanics.
 | Concern | Settled outcome | Current owner |
 |---|---|---|
 | Identity and materiality | Persistent hash identity is distinct from materialized block state; PP-boundary identities are permanent, and ORIGIN represents the selected parent outside the boundary without becoming a direct Genesis parent. | [Domain model](../architecture/domain-model.md), [storage](../architecture/storage.md) |
-| Database lifecycle | `--initialize-db` acts only on Uninitialized state; compatible Empty or Initialized data is retained, network mismatch is rejected, and processing-data replacement requires an explicit Rebuild with a pruning point. | [Storage](../architecture/storage.md) |
+| Database lifecycle | `--initialize-db` acts only on Uninitialized state; compatible Empty, Initialized, or Inconsistent data is retained, network mismatch is rejected, and processing-data replacement requires an explicit Rebuild with a pruning point. | [Storage](../architecture/storage.md) |
 | Node capability | A processing session uses one validated RPC generation, normalized notifications, and normalized full-block RPC responses. | [NodeService](../architecture/node-service.md) |
 | Block processing | Block admission, in-memory orphan topology, bounded dependency resolution, and definitely committed PP sealing are distinct responsibilities with owner-directed faults. | [Block processing](../architecture/block-processing.md) |
 | VSPC processing | VSPC changes are normalized, resolved through ordered pending history, committed only when ready, and switch from synthetic priority to notification authority at component-local Live. | [VSPC processing](../architecture/vspc-processing.md) |

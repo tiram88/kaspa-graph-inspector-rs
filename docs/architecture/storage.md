@@ -120,14 +120,14 @@ Rejected
     network mismatch or unsupported, newer, v1, partial, or unknown schema
 ```
 
-`--initialize-db` initializes only `Uninitialized`. It is idempotent for a
-compatible `Empty` or `Initialized` database: continue without erasing data or
-changing its network binding. Without the flag, first initialization requires
-interactive confirmation; noninteractive startup fails with an actionable
-confirmation error.
+`--initialize-db` initializes only `Uninitialized`. It is idempotent for every
+compatible existing database: retain `Empty`, `Initialized`, or `Inconsistent`
+state without erasing data or changing its network binding. An `Inconsistent`
+database remains usable only for Rebuild and is not misclassified as `Empty`.
+Without the flag, first initialization requires interactive confirmation;
+noninteractive startup fails with an actionable confirmation error.
 
 An existing database is never silently rebound to the CLI network or reset.
-`Inconsistent` is usable for Rebuild and is not misclassified as Empty.
 `--clear-db` requests processing-data Rebuild under the existing compatible
 network binding. A persistent destructive `--reinitialize-db --yes` startup
 option is forbidden; a separate explicit administrative reset remains
