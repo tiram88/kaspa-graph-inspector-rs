@@ -1,7 +1,15 @@
 # NodeService connectivity and notification routing
 
-> Focused extraction; the current consolidated contract is
+> Focused extraction; during the documentation reorganization, the current
+> consolidated contract remains
 > [handoff-2026-09-20.md](handoff-2026-09-20.md), which prevails on conflicts.
+
+## Scope and ownership
+
+This document owns node connectivity, validated RPC generations, remote
+subscription state, notification routing, and node-response normalization.
+The [processing lifecycle](processing-lifecycle.md) owns recovery coordination
+after NodeService reports a typed fault.
 
 ## NodeService — settled
 
@@ -20,8 +28,23 @@ NodeService lifecycle worker
 `ValidatedRpcClient` represents exactly one validated physical connection
 lifetime. Processing code receives this capability, not `NodeService`.
 
-Transient connection, transport, and validation-RPC failures are retried
-indefinitely with nominal delays:
+```rust
+enum NodeServiceState {
+    Connecting,
+    Ready(Arc<ValidatedRpcClient>),
+    Unavailable(NodeUnavailableReason),
+    Rejected(NodeRejection),
+    Stopped,
+}
+```
+
+`NodeServiceState` and published status outlive individual validated client
+generations. `wait_until_usable()` waits through transient `Connecting` and
+`Unavailable` states, but returns permanent `Rejected`, `Stopped`, or closed
+service state to its caller.
+
+Transient connection, transport, and validation-RPC failures enter
+`Unavailable` and are retried indefinitely with nominal delays:
 
 ```text
 1s, 2s, 4s, 8s, 16s, 30s, 30s, ...
@@ -86,7 +109,7 @@ Disabled | Enabled | Retired
 - Disabled drops notifications immediately.
 - Enabled routes with nonblocking bounded sends.
 - A full destination channel means notification loss: disable both streams and
-  raise a recovery fault.
+  report `Require(Resync)`.
 - An Enabled `BlockAdded` without `block.verbose_data` cannot provide the
   selected parent and merge sets required for materialization and reports
   `Require(Resync)`.
@@ -120,19 +143,15 @@ disable router immediately
 stop both remote subscriptions
 ```
 
-Subscription changes are all-or-nothing. Partial failure makes the connection
-state uncertain and retires the validated handle if rollback cannot be
-proven. Callbacks received while the router remains Disabled during remote
-activation are intentionally dropped; they receive no Catchup overlap
-credit and do not themselves request recovery. Synthetic GetBlocks/VSPC
-production continues until ordinary overlap is demonstrated. Before Live,
-ResyncEngine captures a fixed body-tip snapshot and enforces the bounded
-coverage invariant defined in `processing-lifecycle.md`; that gate accounts
-for activation-time BlockAdded drops, including a block outside the
-then-selected past. ResyncEngine stops synthetic VSPC production for that
-block-only coverage and sends VspcProcessor its existing Live command;
-BlockProcessor remains in Catchup. NodeService does not replay dropped
-callbacks.
+Subscription changes are all-or-nothing. If either remote start fails, stop
+any subscription already started; retire the validated handle when rollback
+cannot be proven. A partial subscription or unsubscription failure likewise
+retires the handle. Callbacks received while the router remains Disabled
+during remote activation are intentionally dropped; they receive no Catchup
+overlap credit and do not themselves request recovery. The fixed body-tip
+coverage gate defined by the
+[processing lifecycle](processing-lifecycle.md) accounts for these drops
+before global Live. NodeService does not replay dropped callbacks.
 Disabling is an immediate local cutoff, not a quiescence or transport fence.
 
 Pinned rusty-kaspa inspection establishes that virtual processing can emit a
@@ -141,6 +160,10 @@ does not move the selected-chain sink. This notification filter is distinct
 from handling an empty VSPC V2 RPC page in the synchronization pump. Pinned
 sink selection cannot produce a removed-only notification; that shape is the
 fault above, not another no-op.
+
+In a short Live IBD episode, connection loss or a violated stream invariant
+already causes recovery. NodeService has no separate continuous-IBD mode in
+KGI v2.
 
 Only NodeService sees raw rusty-kaspa notification types. The only VSPC payload
 outside NodeService is:
@@ -161,10 +184,13 @@ struct VspcChange {
 - hashes must match returned blocks;
 - duplicate hashes are invalid;
 - strip the inclusive `low_hash` entry;
+- accept zero normalized blocks after stripping that entry;
 - return `Vec<SharedNodeBlock>`; a parallel hash vector is unnecessary.
 
 KGI requests full RPC blocks directly. Fetching hashes and then calling
 `GetBlock` one by one has no accepted benefit for this local-node deployment.
+DependencyResolver uses individual `GetBlock` calls for missing dependencies
+without holding database transactions.
 For `GetVirtualChainFromBlockV2`, request
 `min_confirmation_count = None` and
 `data_verbosity_level = Some(RpcDataVerbosityLevel::None)`. Rusty-kaspa master

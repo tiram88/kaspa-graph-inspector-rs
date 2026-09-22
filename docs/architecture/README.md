@@ -74,7 +74,7 @@ authority.
 | §1, System shape and ownership | `overview.md`. Shared type names introduced only as vocabulary go to `domain-model.md`. | Extracted; final verification pending |
 | §2, Shared identities and graph vocabulary | `domain-model.md`. Persistence-specific enforcement and schema representation go to `storage.md`. | Extracted; final verification pending |
 | §3, Lifecycle, intent, commands, and channels | `processing-lifecycle.md` for lifecycle, command direction, channel semantics, fault classification, retries, and milestones. Reusable identity/value definitions go to `domain-model.md`; service-specific reconnect rules go to `node-service.md` or `storage.md`. | Pending |
-| §4, NodeService and validated RPC | `node-service.md`. | Pending |
+| §4, NodeService and validated RPC | `node-service.md`. | Extracted and reconciled; final verification pending |
 | §5, StorageService lifecycle and DB bootstrap | `storage.md`. Supervisor reactions to StorageService state link to `processing-lifecycle.md`. | Pending |
 | §6, Retained persistence model and cache | `storage.md`. Shared materiality vocabulary links to `domain-model.md`. | Pending |
 | §7, Block materialization and PP boundary | `storage.md` owns materialization transactions, schema invariants, and cache publication; `block-processing.md` owns when BlockProcessor requests those operations and reacts to PP sealing. | Pending |
