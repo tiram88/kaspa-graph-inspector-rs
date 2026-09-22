@@ -1,9 +1,19 @@
 # Block processing
 
-> Focused extraction; the current consolidated contract is
+> Focused extraction; during the documentation reorganization, the current
+> consolidated contract remains
 > [handoff-2026-09-20.md](handoff-2026-09-20.md), which prevails on conflicts.
 
-## PP-boundary policy — settled
+## Scope and ownership
+
+This document owns BlockProcessor, OrphanManager, DependencyResolver, block
+admission, PP-boundary phase behavior, and committed block delivery. The
+[storage contract](storage.md) owns persistent representation and transactions.
+The [processing lifecycle](processing-lifecycle.md) owns recovery phase
+coordination and the synthetic GetBlocks producer. [NodeService](node-service.md)
+owns raw BlockAdded validation and routing.
+
+## PP-boundary phase behavior — settled
 
 For a Rebuild in `PreSeal`:
 
@@ -12,46 +22,49 @@ boundary_seal_blue_score =
     db_pp_blue_score + anticone_finalization_depth
 ```
 
-This deliberately simple BlueScore approximation is accepted.
+This BlueScore approximation is accepted. PreSeal blocks arrive in
+consensus-topological order and use storage's `AllowBoundaryIdentities`
+policy. Missing parents and merge-set identities may be outside the retained
+PP boundary. The materialized retained portion of the PP anticone precedes
+PP-future blocks that merge it.
 
-In `PreSeal`, blocks are processed in consensus-topological order
-with `AllowBoundaryIdentities`; missing parents and merge-set identities may be
-outside the retained PP boundary. The materialized retained portion of the PP
-anticone arrives before PP-future blocks that merge it.
+The **first** block whose blue score is at or above the threshold uses
+`RequireMaterialized`, not the permissive policy. Only its definite successful
+commit changes BlockProcessor's local phase to `PostSeal` and emits the
+exact-once `PpBoundarySealed` milestone upward to ResyncEngine. An ambiguous
+or failed transaction emits no milestone. `PpBoundarySealed` is never a
+command sent back to BlockProcessor.
 
-The first block with blue score at or above the threshold is processed under
-strict policy. Only after that block commits does BlockProcessor enter
-`PostSeal` and emit `PpBoundarySealed` upward to ResyncEngine. ResyncEngine
-observes the seal and propagates the milestone to Supervisor. The milestone is
-never sent back to BlockProcessor as a command.
-ResyncEngine cannot enter Catchup before observing this definite seal; an early
-Catchup trigger fails the recovery attempt. Resync begins PostSeal only after
-reconciliation.
+The [processing lifecycle](processing-lifecycle.md) owns propagation of the
+milestone and the prohibition on entering Catchup before ResyncEngine observes
+it. `BeginResync` starts BlockProcessor in PostSeal only after successful
+reconciliation. All PostSeal materialization is strict.
 
-After sealing, every resync cycle is strict. Before Catchup, a missing
-dependency is a resync failure, not an orphan. In Catchup and Live, ordinary
-orphans are allowed.
+Before Catchup, a missing dependency under strict policy requires Resync
+rather than creating an orphan. During Catchup and Live, unresolved ordinary
+dependencies create in-memory orphans. Entering Live preserves valid queued
+and orphan work; it does not certify empty worker queues.
 
-The observed retained PP anticone is complete enough for KGI visualization
-semantics. No placeholder `blocks` rows and no placeholder promotion are
-needed; outside-boundary identities live only in `block_identifiers`.
-PP bootstrap interns ORIGIN as a permanent outside-boundary identity when
-it is the PP's synthetic selected parent. Genesis has no actual direct
-parents; ordinary non-Genesis blocks still require a selected direct parent.
+The observed retained PP anticone is complete enough for KGI visualization,
+without claiming to contain every mathematical anticone block. Boundary
+identity and ORIGIN semantics belong to the
+[domain model](domain-model.md#pruning-point-boundary-and-origin--settled);
+BlockProcessor never creates placeholder block rows or promotes boundary
+identities.
 
 ## BlockProcessor — settled
 
-Single event loop priority:
+One event loop awaits inputs in strict priority:
 
-1. commands;
-2. intern/resolved blocks;
-3. notification blocks;
-4. synthetic blocks.
+```text
+Command > Intern/resolved block > Notification block > Synthetic block
+```
 
-Tokio biased selection alone is insufficient as a total priority guarantee;
-drain/check higher-priority channels deliberately around lower-priority work.
+Use explicit higher-priority polling or draining around lower-priority work.
+`tokio::select! { biased; ... }` alone does not guarantee this order under
+continually ready inputs.
 
-Conceptual commands include:
+Conceptual commands are:
 
 ```text
 BeginRebuild
@@ -62,86 +75,163 @@ Deactivate
 Shutdown
 ```
 
-A Begin command fully resets processor-local run state, including gates,
-overlap tracking, orphan state, and descendants. Begin does not require an
-acknowledgement because processing is not blocked on it. `Deactivate` is an
-acknowledged barrier.
+A Begin command resets all processor-local run state: phase, source gates,
+overlap map and flag, orphan state, and descendants. Begin has no
+acknowledgement. `Deactivate` is an acknowledged descendant barrier; Shutdown
+is terminal under the shared lifecycle contract.
 
-Notification gating:
+The local notification gate closes on Begin and opens on Catchup. Continue
+polling its receiver while closed and discard received notifications
+immediately. Do not accumulate them for later processing. NodeService rejects
+an Enabled BlockAdded lacking verbose materialization data before it reaches
+this input.
 
-- Begin closes the local notification gate.
-- Catchup opens it.
-- The notification receiver should still be polled while the gate is closed;
-  received notifications are discarded immediately rather than accumulating
-  for later ambiguity.
+### Admission and materialization
 
-A `BlockAdded` without verbose data lacks the selected parent and blue/red
-merge sets required for materialization and requires Resync.
+The first block filter checks processor phase and the source gate. Then query
+storage for materiality:
 
-ResyncEngine, rather than BlockProcessor, owns the exact Catchup-only set of
-synthetic hashes successfully accepted by the block channel. BlockProcessor's
-source-bit map remains responsible for overlap. GetBlocks hashes can repeat
-across responses; engine-filtered synthetic repeats are harmless and earn no
-overlap credit. The sent set is cleared on Live, Begin, and Deactivate.
+- an already materialized block deduplicates and still yields its
+  `PersistedBlock` identity to downstream consumers;
+- a new block is normalized into `BlockMaterialization` and committed under
+  the phase's current storage reference policy; and
+- a permanent boundary identity used as the incoming block is an invariant
+  violation.
 
-Materialization success, including dedup of an already materialized block,
-returns its ID. BlockProcessor sends the resulting `PersistedBlock`
-asynchronously to VspcProcessor and OrphanManager.
+PreSeal boundary absences are accepted only through
+`AllowBoundaryIdentities`. Strict pre-Catchup missing material requires
+Resync. Catchup and Live admit blocks with unresolved ordinary dependencies
+to OrphanManager instead of persisting partial state. Transaction validation,
+hash interning, coordinate allocation, and commit behavior belong to the
+[block materialization transaction](storage.md#block-materialization-transaction--settled).
+
+### Catchup filtering and overlap
+
+Catchup supplies an objective compact-ID lower bound from the latest accepted
+GetBlocks anchor or page. Conceptually:
+
+```rust
+struct BlockCatchup {
+    known_id_lower_bound: CompactId,
+}
+```
+
+A known BlockAdded below this lower bound is a latecomer and is discarded
+without overlap credit. Do not reject an unknown hash using guessed consensus
+order. A notification proven below the sealed PP is discarded as invalid.
+Legitimate delayed notifications at or above the bound may deduplicate,
+materialize, or orphan normally.
+
+Begin resets BlockProcessor's overlap state. Catchup starts accounting with:
+
+```text
+SourceBits::SYNTHETIC
+SourceBits::NOTIFICATION
+HashMap<BlockHash, SourceBits>
+AtomicBool block_overlap
+```
+
+A hash admitted from both sources proves block overlap and sets the flag.
+A second BlockAdded for the same hash within one subscription is an invariant
+fault. GetBlocks hashes may repeat across responses, so ResyncEngine filters
+synthetic repeats before dispatch; a filtered repeat earns no overlap credit.
+The engine-owned `catchup_sent` set and complete-page observation rules belong
+to the [processing lifecycle](processing-lifecycle.md).
+
+### Committed block delivery
+
+```rust
+struct PersistedBlock {
+    point: VspcPoint,
+    selected_parent: BlockHash,
+}
+```
+
+The normal `PersistedBlock` path represents non-Genesis blocks and therefore
+has a mandatory selected parent. Genesis is handled by the rebuild/bootstrap
+path. No VSPC `added` or `removed` member is Genesis, although a derived VSPC
+source may be Genesis.
+
+After a definite successful insert, BlockProcessor sends the block's
+`BlockCommitted` graph update before delivering `PersistedBlock` to
+VspcProcessor and OrphanManager. This preserves graph observer causal order.
+A dedup produces no new graph mutation but still delivers `PersistedBlock`.
+The [API contract](api.md#in-process-api-and-graph-observer-feed--settled)
+owns observer invalidation when graph delivery fails.
+
+`PersistedBlock` delivery is asynchronous but cannot be silently lost after a
+successful commit. A full bounded destination loses session continuity and
+requires Resync; a closed or unavailable receiver is a session ownership
+fault. Cancellation during expected teardown is not a fault. A later session
+rederives authoritative state from the database.
 
 ## OrphanManager — settled
 
-OrphanManager is an asynchronous worker owned by BlockProcessor. It has
-separate command and data-message channels for prompt lifecycle reactions.
+OrphanManager is an asynchronous child owned by BlockProcessor. It has a
+prioritized unbounded command input and a bounded data-message input so
+lifecycle commands remain prompt.
 
 It owns:
 
 - in-memory orphan blocks;
-- dependency topology;
-- reverse missing-hash indexes;
-- the `resolution_pending` set;
-- selection of dependency requests;
-- cancellation of requests made unnecessary by natural arrivals.
+- the missing-dependency topology and frontier;
+- reverse missing-hash-to-waiting-orphan indexes;
+- `resolution_pending: HashSet<BlockHash>`;
+- dependency request selection; and
+- cancellation when natural arrival makes a request unnecessary.
 
 Messages include new orphan, `BlockPersisted`, dependency result/failure, and
-capacity/topology updates. It sends newly ready blocks to BlockProcessor's
-intern/resolved lane.
+capacity/topology updates. `BlockPersisted` resolves every affected edge.
+Every newly ready orphan is removed from orphan storage and returned through
+BlockProcessor's Intern/resolved lane. No waiter belongs in the committed
+block index, and deduplicated hashes are harmless.
 
-Dependency selection is topology-only. Age and DAA score are not selection
-inputs. Start RPC requests at the orphan frontier when occupancy reaches
-roughly one quarter or one third of capacity. Exact capacity and threshold are
-implementation-phase decisions.
+Begin and Deactivate clear or cancel run-local state. Deactivate acknowledges
+only after descendants have stopped. After a resolver RPC succeeds, keep its
+hash in `resolution_pending` until OrphanManager observes `AddOrphan` or
+`BlockPersisted` for that hash. RPC completion alone must not reopen the
+request gap before BlockProcessor accounts for the result.
 
-Notification loss is not treated as an ordinary silent event: disconnect or a
-full bounded notification channel triggers recovery. Callbacks intentionally
-dropped during subscription activation are the explicit exception and are
-covered by the fixed body-tip Live-admission gate. Therefore no independent
-age fallback is required merely to rescue an isolated orphan.
+Dependency selection uses orphan topology only. Age and DAA score are not
+inputs. As a rule of thumb, when occupancy reaches roughly one quarter to one
+third of capacity, request frontier hashes to maximize release. Exact capacity
+and threshold remain implementation choices.
+
+An isolated orphan below the threshold is acceptable. Silent notification
+loss is not a normal assumption: connection loss or a full notification
+channel requests recovery, while callbacks intentionally dropped during
+subscription activation are covered by the lifecycle's fixed body-tip gate.
+No independent age fallback is required.
 
 ## DependencyResolver — settled
 
-DependencyResolver is owned by BlockProcessor for lifecycle purposes but is
-driven by OrphanManager.
+DependencyResolver is owned for lifecycle by BlockProcessor and driven by
+OrphanManager. It has:
 
-- separate command and work-message channels;
-- exact session `Arc<ValidatedRpcClient>`;
-- bounded concurrent `GetBlock` tasks;
-- no database transactions in `GetBlock` calls;
-- no duplicate requests for hashes in OrphanManager's pending set;
-- task cancellation capability;
-- OrphanManager sends `Cancel(hash)` when the block arrives naturally;
-- results go to BlockProcessor's intern/resolved channel;
-- deactivation cancels/joins tasks and releases all session RPC clones before
-  acknowledging.
+- separate command and bounded work channels;
+- the processing session's exact `Arc<ValidatedRpcClient>`;
+- bounded concurrent GetBlock tasks;
+- cancellation for outstanding tasks; and
+- no database transaction held during node RPC.
 
-`resolution_pending` remains set after an RPC returns until the manager
-observes `AddOrphan` or `BlockPersisted` for that hash. RPC completion alone
-must not reopen the request gap. A resolver-confirmed unavailable dependency
-requests `Require(Rebuild)` because DB contents can no longer be trusted
-against node state; RPC/connection failure is not that confirmation. A full
-bounded work channel requests Resync; a closed one is a session fault.
-During Deactivate, BlockProcessor drains/discards child results while
-cancelling and joining children so a full result channel cannot deadlock the
-barrier.
+OrphanManager sends Resolve work and `Cancel(hash)` when a block arrives
+naturally. It owns the pending set and prevents duplicate requests. Resolver
+results return on BlockProcessor's Intern/resolved lane, never its
+notification lane. The resolver validates that GetBlock returned the
+requested hash.
 
-There is no `Satisfied(hash)` queue protocol. `resolution_pending` is a set,
-not a queue or map.
+`resolution_pending` remains set until the manager observes `AddOrphan` or
+`BlockPersisted`; there is no separate `Satisfied(hash)` queue protocol. It is
+a set, not a queue or map.
+
+A resolver-confirmed unavailable dependency requests `Require(Rebuild)`
+because retained database contents can no longer be trusted against node
+state. RPC or connection failure does not prove unavailability and follows
+the validated-client/session fault path.
+
+For OrphanManager-to-Resolver bounded work sends, full requires Resync,
+closed or unavailable is a session fault, and cancellation during teardown is
+expected. Deactivation cancels and joins tasks and releases descendant
+session-resource clones before acknowledging. BlockProcessor continues
+draining and discarding child results while joining descendants so a full
+result channel cannot deadlock the barrier.

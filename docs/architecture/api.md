@@ -24,14 +24,16 @@ replication are not required in v2.
 
 Processors send `BlockCommitted`/`VspcCommitted` through **one ordered,
 bounded graph-update channel**, after their respective DB commits. The
-BlockProcessor sends a newly committed block's graph update before passing
-its `PersistedBlock` to VspcProcessor. Thus a VSPC update cannot reach this
-single API channel ahead of the blocks it causally depends on. The observer
-channel is nonblocking from the processing viewpoint: failed/full delivery
-sets an out-of-band invalid flag; ApiService stops publishing deltas and
-reloads from DB. No processing recovery or producer sequence number is
-needed for observer-only continuity. The invalid flag also catches loss of
-the **last** update that no subsequent sequence number could expose.
+[BlockProcessor delivery contract](block-processing.md#committed-block-delivery)
+and VspcProcessor's corresponding producer contract establish causal order,
+so a VSPC update cannot reach this channel ahead of blocks it depends on.
+
+The observer channel is nonblocking from the processing viewpoint:
+failed/full delivery sets an out-of-band invalid flag; ApiService stops
+publishing deltas and reloads from DB. No processing recovery or producer
+sequence number is needed for observer-only continuity. The invalid flag also
+catches loss of the **last** update that no later sequence number could
+expose.
 
 Conceptual committed payloads (field names can change, semantic content
 must not):
