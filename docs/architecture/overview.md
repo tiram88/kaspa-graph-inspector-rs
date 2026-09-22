@@ -96,6 +96,13 @@ statuses are observations, not shared lifecycle authority. ApiService is
 an in-process read-only observer with its own resource budgets; graph
 observer failure cannot fault processing.
 
+Every prepared processing session resets ApiService publication continuity.
+The API then follows `Stale -> Synchronizing -> Live`: a PostSeal trigger
+publishes the first coherent replacement GraphEpoch, and the global Live
+trigger changes that same epoch to Live without reloading it. Rebuild closes
+historical reads until the PostSeal image is published; ordinary Resync leaves
+them available because it does not replace processing data.
+
 Notifications never pass through `ResyncEngine`:
 
 ```text

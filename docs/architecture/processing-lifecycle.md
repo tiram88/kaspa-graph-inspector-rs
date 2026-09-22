@@ -99,9 +99,10 @@ receiver does not cancel the worker's completed teardown transition.
 `PpBoundarySealed` is an exact-once upward milestone event, never a command to
 BlockProcessor. After the threshold block commits, BlockProcessor enters
 PostSeal and emits the event to ResyncEngine. ResyncEngine observes it before
-permitting Catchup and propagates it to Supervisor. Supervisor then downgrades
-both desired and active recovery to `Resync`. Entering Live satisfies and
-clears the remaining recovery requirement.
+permitting Catchup, sends ApiService the PostSeal publication trigger, and
+propagates the milestone to Supervisor. Supervisor then downgrades both desired
+and active recovery to `Resync`. Entering Live satisfies and clears the
+remaining recovery requirement.
 
 Administrative/API-triggered recovery through this same Supervisor path is a
 KGI v2.1 candidate, not a v2 requirement.
@@ -183,6 +184,50 @@ Database network binding and schema/migration state survive the rebuild. The
 transaction replaces processing data and PP-derived processing metadata,
 including `db_pp_blue_score`.
 
+### API session replacement and publication
+
+Every prepared processing run replaces API publication continuity through the
+existing reliable processing-to-ApiService control path. Its publication state
+machine is:
+
+```text
+Reset -> Stale
+PublishPostSeal -> Synchronizing
+PublishLive -> Live
+```
+
+Reset retires the previous GraphEpoch, stops its deltas, prevents queued
+observer updates from crossing into the new session, and arms buffering for
+the replacement image. Its completed-effect acknowledgement does not mean a
+new image has been published. PostSeal and Live publication controls are
+reliable and exact-once, but processing does not wait for publication
+completion.
+
+For ordinary Resync, perform read-only reconciliation first. A failed
+reconciliation requests Rebuild without resetting the API. After successful
+reconciliation, send the session-replacement Reset and await its
+acknowledgement, then send the PostSeal publication trigger before processor
+Begin. Historical DB reads remain available because Resync does not clear
+processing data.
+
+For Rebuild, obtain the pruning point, send the database-rebuild Reset, and
+await its acknowledgement before `rebuild_from_pruning_point`. This Reset also
+closes and drains or cancels historical DB reads. After processor Begin,
+ResyncEngine sends the PostSeal publication trigger only when it observes
+BlockProcessor's definitely committed `PpBoundarySealed` event.
+
+The PostSeal trigger starts the consistent DB snapshot plus buffered-update
+replay. When coherent, ApiService publishes a new GraphEpoch in
+`Synchronizing` state. Rebuild historical reads reopen at that publication.
+Processing does not wait for publication to complete.
+
+When the global `EnteredLive` conditions are satisfied, ResyncEngine sends the
+Live publication trigger. If the PostSeal image is already active, ApiService
+publishes an atomic lifecycle revision in the same GraphEpoch; it does not
+reload or create another epoch. If loading is still in progress, ApiService
+records the newer target and publishes the completed image directly as Live.
+A later Reset cancels any pending publication and returns the API to Stale.
+
 ### Deactivation barrier
 
 Conceptual order:
@@ -234,7 +279,9 @@ redispatches them.
 Before a fresh Begin:
 
 1. disable/unsubscribe processing notifications;
-2. send Begin to BlockProcessor and VspcProcessor.
+2. complete the API Reset acknowledgement; for Resync also send
+   `PublishPostSeal`, while Rebuild waits for the post-Begin seal event;
+3. send Begin to BlockProcessor and VspcProcessor.
 
 Begin needs no acknowledgement. Before Catchup:
 
@@ -476,9 +523,10 @@ will request recovery.
 `EnteredLive` is emitted only after the block coverage producer is
 stopped/joined, the earlier VspcProcessor Live enqueue succeeded, and
 BlockProcessor Live is successfully enqueued. It does not mean queues or
-orphan state are empty. If coverage exhausts its budget, do not send
-BlockProcessor Live; request Resync and deactivate the component-local VSPC
-Live run normally.
+orphan state are empty. At this same lifecycle point, ResyncEngine sends
+ApiService the Live publication trigger. If coverage exhausts its budget, do
+not send BlockProcessor Live; request Resync and deactivate the component-local
+VSPC Live run normally.
 
 ## Short node IBD while Live — settled stance
 

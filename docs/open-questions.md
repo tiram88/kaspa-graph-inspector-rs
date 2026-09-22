@@ -23,8 +23,8 @@ analysis or implementation; none permits weakening a settled invariant:
 8. The exact `MAX_WINDOW_DEPTH` (bounded by the settled 1000-level cache),
    HTTP/SSE budgets, adaptive fixed-view delay curve, and graph-delta history
    size.
-9. Detailed historical-read cancellation/transaction mechanism around Reset;
-   exact PostSeal/Live timing of publishing a complete new API image.
+9. Detailed historical-read cancellation/transaction mechanism around the
+   Rebuild Reset barrier.
 10. Exact metrics export/labels, tracing details, operational endpoints, and
     deployment layout. The required v2 metrics and processing-latency load
     acceptance are settled in the handoff.
