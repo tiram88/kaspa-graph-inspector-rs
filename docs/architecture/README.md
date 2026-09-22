@@ -68,30 +68,30 @@ Where a section contains more than one concern, the row states the exact
 split. This table controls the migration work but does not change behavioral
 authority.
 
-| Handoff section | Target owner and dispatch rule |
-|---|---|
-| §0, Reading rules and scope | `README.md` for architecture authority and navigation; `../README.md` for repository-wide document classes. Scope constraints on future work go to `../future-work.md`. |
-| §1, System shape and ownership | `overview.md`. Shared type names introduced only as vocabulary go to `domain-model.md`. |
-| §2, Shared identities and graph vocabulary | `domain-model.md`. Persistence-specific enforcement and schema representation go to `storage.md`. |
-| §3, Lifecycle, intent, commands, and channels | `processing-lifecycle.md` for lifecycle, command direction, channel semantics, fault classification, retries, and milestones. Reusable identity/value definitions go to `domain-model.md`; service-specific reconnect rules go to `node-service.md` or `storage.md`. |
-| §4, NodeService and validated RPC | `node-service.md`. |
-| §5, StorageService lifecycle and DB bootstrap | `storage.md`. Supervisor reactions to StorageService state link to `processing-lifecycle.md`. |
-| §6, Retained persistence model and cache | `storage.md`. Shared materiality vocabulary links to `domain-model.md`. |
-| §7, Block materialization and PP boundary | `storage.md` owns materialization transactions, schema invariants, and cache publication; `block-processing.md` owns when BlockProcessor requests those operations and reacts to PP sealing. |
-| §8, BlockProcessor, orphan topology, dependency resolution | `block-processing.md`. Cross-worker recovery dispositions link to `processing-lifecycle.md`. |
-| §9, VSPC changes, readiness, history, and atomic coloring | `vspc-processing.md` owns sequencing and readiness; `storage.md` owns the atomic coloring transaction; shared VSPC value definitions go to `domain-model.md`. |
-| §10, ResyncEngine preparation and common pump | `processing-lifecycle.md`. Node RPC normalization used by the pump links to `node-service.md`; component-local admission behavior links to `block-processing.md` and `vspc-processing.md`. |
-| §11, Catchup, overlap, Live, and late transport messages | `processing-lifecycle.md` owns phase transitions, coverage admission, timing, and global Live entry. `block-processing.md` and `vspc-processing.md` own their local phase behavior. `node-service.md` owns routing and transport-message handling. |
-| §12, Teardown and delivery/failure semantics | `processing-lifecycle.md` owns teardown order, barriers, owner-directed faults, and session completion. Component-specific draining duties remain in the relevant component document. |
-| §13, In-process API and graph observer feed | `api.md`. Producer-side observer publication guarantees remain in the relevant processor document and are referenced by `api.md`. |
-| §14, API snapshot, revision, delta, SSE, and ETags | `api.md`. |
-| §15, Reset and recovery-time API availability | `api.md` owns Reset and publication behavior; `processing-lifecycle.md` owns when lifecycle milestones trigger those API operations. |
-| §16, DAA navigation and window API | `api.md`. Storage query semantics needed by these endpoints remain in `storage.md`. |
-| §17, Web behavior | `web.md`. Wire contracts consumed by the browser remain in `api.md`. |
-| §18, Resource isolation and scalability | `overview.md` owns the system-wide isolation model. Concrete component budgets and saturation behavior remain with each component; API budgets remain in `api.md`. |
-| §19, Tests and verification obligations | `verification.md`, organized by the architecture owner being verified. Exact unresolved test-matrix breadth remains a deferred decision rather than a duplicate contract. |
-| §20, Remaining implementation decisions and v2.1 boundary | Unresolved v2 architecture goes to `../decisions/open.md`; constrained implementation choices go to `../decisions/deferred.md`; execution order goes to `../implementation/sequence.md`; work outside v2 remains in `../future-work.md`. |
-| §21, Rejected designs | `../decisions/rejected.md` or `../decisions/superseded.md`, according to whether the design was never accepted or was replaced after acceptance. Any current replacement behavior remains in its focused architecture owner. |
+| Handoff section | Target owner and dispatch rule | Migration status |
+|---|---|---|
+| §0, Reading rules and scope | `README.md` for architecture authority and navigation; `../README.md` for repository-wide document classes. Scope constraints on future work go to `../future-work.md`. | Pending |
+| §1, System shape and ownership | `overview.md`. Shared type names introduced only as vocabulary go to `domain-model.md`. | Pending |
+| §2, Shared identities and graph vocabulary | `domain-model.md`. Persistence-specific enforcement and schema representation go to `storage.md`. | Pending |
+| §3, Lifecycle, intent, commands, and channels | `processing-lifecycle.md` for lifecycle, command direction, channel semantics, fault classification, retries, and milestones. Reusable identity/value definitions go to `domain-model.md`; service-specific reconnect rules go to `node-service.md` or `storage.md`. | Pending |
+| §4, NodeService and validated RPC | `node-service.md`. | Pending |
+| §5, StorageService lifecycle and DB bootstrap | `storage.md`. Supervisor reactions to StorageService state link to `processing-lifecycle.md`. | Pending |
+| §6, Retained persistence model and cache | `storage.md`. Shared materiality vocabulary links to `domain-model.md`. | Pending |
+| §7, Block materialization and PP boundary | `storage.md` owns materialization transactions, schema invariants, and cache publication; `block-processing.md` owns when BlockProcessor requests those operations and reacts to PP sealing. | Pending |
+| §8, BlockProcessor, orphan topology, dependency resolution | `block-processing.md`. Cross-worker recovery dispositions link to `processing-lifecycle.md`. | Pending |
+| §9, VSPC changes, readiness, history, and atomic coloring | `vspc-processing.md` owns sequencing and readiness; `storage.md` owns the atomic coloring transaction; shared VSPC value definitions go to `domain-model.md`. | Pending |
+| §10, ResyncEngine preparation and common pump | `processing-lifecycle.md`. Node RPC normalization used by the pump links to `node-service.md`; component-local admission behavior links to `block-processing.md` and `vspc-processing.md`. | Pending |
+| §11, Catchup, overlap, Live, and late transport messages | `processing-lifecycle.md` owns phase transitions, coverage admission, timing, and global Live entry. `block-processing.md` and `vspc-processing.md` own their local phase behavior. `node-service.md` owns routing and transport-message handling. | Pending |
+| §12, Teardown and delivery/failure semantics | `processing-lifecycle.md` owns teardown order, barriers, owner-directed faults, and session completion. Component-specific draining duties remain in the relevant component document. | Pending |
+| §13, In-process API and graph observer feed | `api.md`. Producer-side observer publication guarantees remain in the relevant processor document and are referenced by `api.md`. | Extracted; producer ownership deduplication and final verification pending |
+| §14, API snapshot, revision, delta, SSE, and ETags | `api.md`. | Extracted; final verification pending |
+| §15, Reset and recovery-time API availability | `api.md` owns Reset and publication behavior; `processing-lifecycle.md` owns when lifecycle milestones trigger those API operations. | Extracted; lifecycle deduplication and final verification pending |
+| §16, DAA navigation and window API | `api.md`. Storage query semantics needed by these endpoints remain in `storage.md`. | Extracted; storage deduplication and final verification pending |
+| §17, Web behavior | `web.md`. Wire contracts consumed by the browser remain in `api.md`. | Pending |
+| §18, Resource isolation and scalability | `overview.md` owns the system-wide isolation model. Concrete component budgets and saturation behavior remain with each component; API budgets remain in `api.md`. | Pending |
+| §19, Tests and verification obligations | `verification.md`, organized by the architecture owner being verified. Exact unresolved test-matrix breadth remains a deferred decision rather than a duplicate contract. | Pending |
+| §20, Remaining implementation decisions and v2.1 boundary | Unresolved v2 architecture goes to `../decisions/open.md`; constrained implementation choices go to `../decisions/deferred.md`; execution order goes to `../implementation/sequence.md`; work outside v2 remains in `../future-work.md`. | Pending |
+| §21, Rejected designs | `../decisions/rejected.md` or `../decisions/superseded.md`, according to whether the design was never accepted or was replaced after acceptance. Any current replacement behavior remains in its focused architecture owner. | Pending |
 
 ## Cutover conditions
 
