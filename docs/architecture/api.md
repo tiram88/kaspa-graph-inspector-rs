@@ -245,33 +245,20 @@ strategy without changing observable behavior.
 
 ## DAA navigation and graph windows — settled
 
-`levels.daa_score` is the DAA score of its current VSPC block, or `i64::MAX`
-if that level has none. On new level creation use the sentinel, not zero.
-Materializing a normal non-VSPC block does not set this score. The atomic
-VSPC transaction sets or clears affected levels to their **final** values.
-ApiService reaches the same final values from `VspcCommitted` vectors and
-its cached block metadata; storage need not send a level-score delta.
-
 For valid query `0 <= q < i64::MAX`, resolve a DAA target by current VSPC
-floor, with the **highest level** among score ties:
+floor, with the **highest level** among score ties. The
+[storage contract](storage.md#historical-read-contracts--settled) owns the
+indexed database lookup and consistent historical transaction.
 
-```sql
-SELECT level
-FROM levels
-WHERE daa_score <= $1
-ORDER BY daa_score DESC, level DESC
-LIMIT 1;
-```
-
-The sentinel is naturally excluded because no valid `$1` reaches MAX(i64);
-an extra sentinel predicate is unnecessary. There may be VSPC-empty levels
-after reorg. If `q` precedes the retained PP and no floor exists, report
-explicit no-retained-match. A `q` beyond the current VSPC DAA resolves the
-current VSPC level. If `q` is at or above the DAA of HGC's lowest cached VSPC
-level, HGC can resolve it; otherwise use an indexed DB lookup. Level
-resolution and its window must come from **one immutable HGC image** or one
-consistent DB transaction, never different revisions. Historical DAA/window
-response caching is excluded from v2 and recorded for v2.1.
+There may be VSPC-empty levels after reorg. If `q` precedes the retained PP
+and no floor exists, report explicit no-retained-match. A `q` beyond the
+current VSPC DAA resolves the current VSPC level. If `q` is at or above the
+DAA of HGC's lowest cached VSPC level, HGC can resolve it; otherwise use the
+storage lookup. Level resolution and its window must come from **one immutable
+HGC image** or one consistent DB transaction, never different revisions.
+ApiService derives cached levels' final scores from `VspcCommitted` and its
+cached block metadata; storage sends no level-score delta. Historical
+DAA/window response caching is excluded from v2 and recorded for v2.1.
 
 The public graph API has conceptually:
 
