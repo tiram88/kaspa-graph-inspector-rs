@@ -241,10 +241,14 @@ parent rendering, and Genesis recognition from zero actual direct parents.
 ## Resource isolation and performance
 
 API load tests verify the
-[resource isolation contract](handoff-2026-09-20.md#18-resource-isolation-and-scalability--settled).
+[system isolation contract](overview.md#resource-isolation-and-scalability--settled)
+and [API bulkheads](api.md#resource-isolation-and-saturation--settled).
 Exercise status, head, and historical admission lanes independently, including
-configured rejection limits, while measuring processor commit latency.
-Saturated API work must not materially delay processing.
+configured rejection limits, while measuring both processors' commit latency.
+Also cover bounded slow-SSE behavior, cache-memory exhaustion with complete
+levels, explicit rejection or temporary unavailability, and the required
+operational measurements. Saturated API work must not materially delay
+processing or produce a partial graph image.
 
 Go KGI parity fixtures, rusty-kaspa RPC and notification fixtures, PostgreSQL
 integration tests, and browser graph tests accompany the applicable groups

@@ -35,7 +35,7 @@ documents link to it instead of restating it.
 | `block-processing.md` | BlockProcessor, OrphanManager, DependencyResolver, block admission, and PP-boundary sealing behavior. |
 | `vspc-processing.md` | VSPC normalization, readiness, sequencing, coloring, and VSPC-specific behavior during recovery and Live. |
 | `processing-lifecycle.md` | Supervisor, recovery intent, ResyncEngine, Resync/Rebuild preparation, the common pump, Catchup and Live admission, fault policy, retries, and teardown. |
-| `api.md` | In-process graph publication, API epochs and Reset, snapshots, revisions, deltas, SSE, ETags, DAA navigation, and graph-window APIs. |
+| `api.md` | In-process graph publication, API epochs and Reset, snapshots, revisions, deltas, SSE, ETags, DAA navigation, graph-window APIs, and API resource bulkheads. |
 | `web.md` | Browser client behavior and presentation requirements. |
 | `verification.md` | Required fixtures, integration scenarios, acceptance checks, and upstream assumptions. It references contracts without redefining them. |
 
@@ -88,7 +88,7 @@ authority.
 | §15, Reset and recovery-time API availability | `api.md` owns Reset and publication behavior; `processing-lifecycle.md` owns when lifecycle milestones trigger those API operations. | Extracted and reconciled; final verification pending |
 | §16, DAA navigation and window API | `api.md`. Storage query semantics needed by these endpoints remain in `storage.md`. | Extracted; final verification pending |
 | §17, Web behavior | `web.md`. Wire contracts consumed by the browser remain in `api.md`. | Extracted; final verification pending |
-| §18, Resource isolation and scalability | `overview.md` owns the system-wide isolation model. Concrete component budgets and saturation behavior remain with each component; API budgets remain in `api.md`. | Pending |
+| §18, Resource isolation and scalability | `overview.md` owns the system-wide isolation model. Concrete component budgets and saturation behavior remain with each component; API budgets remain in `api.md`. | Extracted and reconciled; final verification pending |
 | §19, Tests and verification obligations | `verification.md`, organized by the architecture owner being verified. Exact unresolved test-matrix breadth remains a deferred decision rather than a duplicate contract. | Extracted and reconciled; final verification pending |
 | §20, Remaining implementation decisions and v2.1 boundary | Unresolved v2 architecture goes to `../decisions/open.md`; constrained implementation choices go to `../decisions/deferred.md`; execution order goes to `../implementation/sequence.md`; work outside v2 remains in `../future-work.md`. | Extracted and reconciled; final verification pending |
 | §21, Rejected designs | `../decisions/rejected.md` or `../decisions/superseded.md`, according to whether the design was never accepted or was replaced after acceptance. Any current replacement behavior remains in its focused architecture owner. | Extracted and reconciled; final verification pending |

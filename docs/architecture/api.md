@@ -6,8 +6,8 @@
 
 ## Scope and ownership
 
-This document owns ApiService, graph publication, the `HeadGraphCache`, and
-the public graph API contract. The
+This document owns ApiService, graph publication, the `HeadGraphCache`, API
+resource bulkheads, and the public graph API contract. The
 [processing lifecycle](processing-lifecycle.md) owns when recovery milestones
 send API controls. [Storage](storage.md) owns database transaction and query
 implementation. Web client behavior belongs to the
@@ -17,10 +17,8 @@ implementation. Web client behavior belongs to the
 
 KGI v2 includes an in-process `ApiService` and a complete bounded-by-level
 `HeadGraphCache` (HGC), rather than directing each head request to expensive
-PostgreSQL graph queries. This remains a valid foundation for future scale:
-later deployments could separate multiple read-only API replicas from a
-single writer/processor, but multiple full processing stacks and DB
-replication are not required in v2.
+PostgreSQL graph queries. The [system overview](overview.md#resource-isolation-and-scalability--settled)
+owns deployment evolution and the single-writer constraint.
 
 Processors send `BlockCommitted`/`VspcCommitted` through **one ordered,
 bounded graph-update channel**, after their respective DB commits. The
@@ -93,9 +91,7 @@ No arbitrary maximum block count may truncate a retained level: **every**
 block and relevant edge endpoint for each cached level is available. Every
 windowed endpoint caps requested depth to `MAX_WINDOW_DEPTH` and reports
 the effective range. An oversized `/graph/head` request cannot fall back to
-DB; it is capped. A cache memory budget may make the whole image temporarily
-unavailable, never partially populated. Process work retains resource
-priority.
+DB; it is capped.
 
 The v1 edge rule remains: emit **every materialized edge whose span
 intersects the requested window**, including a parent outside the response.
@@ -171,8 +167,9 @@ SSE is only an ordered **cursor wakeup** `(epoch, revision)`, not the graph
 data channel. A browser `EventSource` can receive a sequence on one
 connection, but reconnection is not exactly-once. On connect the server
 immediately emits the latest cursor; subsequent publications emit updated
-cursors. Slow clients get coalesced cursor notifications and, if persistently
-behind, are disconnected; they reconnect and use HTTP delta or snapshot.
+cursors. Each client has a bounded cursor buffer. Slow clients get coalesced
+cursor notifications and, if persistently behind, are disconnected; they
+reconnect and use HTTP delta or snapshot.
 
 `representation_version` is the settled term for the graph payload schema.
 An ETag for a head snapshot distinguishes epoch, revision, effective window,
@@ -276,3 +273,44 @@ graph response carries its hash dictionary. A window fully served by HGC has
 a live cursor. A historical DB-backed window is a static image without a
 cursor, capped by `MAX_WINDOW_DEPTH`. Requests crossing HGC's lower bound
 take the consistent DB path; head depth itself never forces this fallback.
+
+## Resource isolation and saturation — settled
+
+ApiService uses mandatory bulkheads beneath the system-wide processing
+priority:
+
+- a capped read-only API database pool separate from processing database
+  capacity;
+- bounded HTTP concurrency, query duration, response bytes and serialization
+  CPU;
+- bounded SSE clients and per-client buffers;
+- bounded delta history, cache memory, and historical-read work;
+- a separate memory-only status/info admission lane, so graph saturation
+  cannot hide service state; and
+- distinct budgets for head delivery and historical database reads.
+
+API snapshot reload ranks above historical queries and below processing. On
+saturation, reject or degrade API work explicitly. Do not block processing,
+truncate a response or cache image presented as complete, or silently drop a
+processing notification.
+
+If all `MAX_CACHE_DEPTH = 1000` complete levels exceed the cache memory
+allowance, first drop an optional stale image when useful. Otherwise mark head
+temporarily unavailable and retry a complete reload. Never publish partial
+levels. Slow SSE clients follow the bounded coalescing and disconnect contract
+above.
+
+V2 exposes these operational measurements:
+
+- request count, latency, and response bytes by endpoint;
+- active and rejected SSE clients;
+- cache hits, misses, and evictions;
+- database permit and query time;
+- delta-journal resets and slow-client disconnects; and
+- BlockProcessor and VspcProcessor commit latency.
+
+API traffic up to configured rejection limits must not materially increase
+either processor's commit latency. Exact capacities remain in the
+[deferred decision register](../decisions/deferred.md). Traffic-share estimates
+and a numeric SSE-client limit are load-test inputs rather than fixed
+architecture constants.

@@ -13,6 +13,7 @@ mechanics.
 | VSPC processing | VSPC changes are normalized, resolved through ordered pending history, committed only when ready, and switch from synthetic priority to notification authority at component-local Live. | [VSPC processing](../architecture/vspc-processing.md) |
 | Recovery lifecycle | Recovery strength is `Resync < Rebuild`; Resync and Rebuild share one pump, enter Catchup through the rolling sink or retained fallbacks, and require bounded fixed-tip coverage before global Live. | [Processing lifecycle](../architecture/processing-lifecycle.md) |
 | API publication | ApiService uses Reset, PostSeal, and Live publication controls, coherent GraphEpoch replacement, a complete level-bounded head cache, and bounded historical reads. | [API](../architecture/api.md) |
+| Resource isolation | Processing has reserved capacity and priority; API pools, admission lanes, caches, and client work are bounded and degrade explicitly under saturation. | [Overview](../architecture/overview.md), [API](../architecture/api.md) |
 | Web behavior | Browser state follows API epochs and cursors, uses stable hash identity, freezes fixed views, and recognizes Genesis by zero actual direct parents. | [Web](../architecture/web.md) |
 | Verification | Upstream assumptions, integration boundaries, and architecture acceptance scenarios have a required executable evidence baseline. | [Verification](../architecture/verification.md) |
 

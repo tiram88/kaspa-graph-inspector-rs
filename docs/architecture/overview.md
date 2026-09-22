@@ -6,8 +6,9 @@
 
 ## Scope and ownership
 
-This document owns the system boundary, component ownership, and the direction
-of control and data flow. Shared identities and graph terminology belong to
+This document owns the system boundary, component ownership, direction of
+control and data flow, and system-wide resource isolation. Shared identities
+and graph terminology belong to
 the [domain model](domain-model.md). Component behavior belongs to the linked
 focused document.
 
@@ -83,3 +84,19 @@ observations of those owners, never a second source of lifecycle authority.
   cannot redefine processing commit semantics.
 - Web is an API consumer outside the worker control tree; its behavior is
   defined in the [Web architecture](web.md).
+
+## Resource isolation and scalability — settled
+
+Processing has reserved database connections and execution capacity and keeps
+priority over every read-only API workload. API saturation, cache reload, and
+client fan-out must never block processing, silently drop a processing
+notification, or turn API observer failure into processing recovery. The
+[API resource contract](api.md#resource-isolation-and-saturation--settled)
+owns the concrete pools, admission lanes, limits, and saturation behavior.
+
+KGI v2 starts with one in-process ApiService and one processing stack. This
+shape may later evolve into separate stateless or read-only API replicas with
+appropriate cache, proxy, and database scaling; a few thousand concurrent
+clients may make that separation useful. Database replication is not required
+for v2. The design does not authorize multiple independent processors writing
+the same database.
