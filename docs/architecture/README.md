@@ -87,7 +87,7 @@ authority.
 | §14, API snapshot, revision, delta, SSE, and ETags | `api.md`. | Extracted; final verification pending |
 | §15, Reset and recovery-time API availability | `api.md` owns Reset and publication behavior; `processing-lifecycle.md` owns when lifecycle milestones trigger those API operations. | Extracted; lifecycle deduplication and final verification pending |
 | §16, DAA navigation and window API | `api.md`. Storage query semantics needed by these endpoints remain in `storage.md`. | Extracted; storage deduplication and final verification pending |
-| §17, Web behavior | `web.md`. Wire contracts consumed by the browser remain in `api.md`. | Pending |
+| §17, Web behavior | `web.md`. Wire contracts consumed by the browser remain in `api.md`. | Extracted; final verification pending |
 | §18, Resource isolation and scalability | `overview.md` owns the system-wide isolation model. Concrete component budgets and saturation behavior remain with each component; API budgets remain in `api.md`. | Pending |
 | §19, Tests and verification obligations | `verification.md`, organized by the architecture owner being verified. Exact unresolved test-matrix breadth remains a deferred decision rather than a duplicate contract. | Pending |
 | §20, Remaining implementation decisions and v2.1 boundary | Unresolved v2 architecture goes to `../decisions/open.md`; constrained implementation choices go to `../decisions/deferred.md`; execution order goes to `../implementation/sequence.md`; work outside v2 remains in `../future-work.md`. | Pending |

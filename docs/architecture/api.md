@@ -10,8 +10,8 @@ This document owns ApiService, graph publication, the `HeadGraphCache`, and
 the public graph API contract. The
 [processing lifecycle](processing-lifecycle.md) owns when recovery milestones
 send API controls. [Storage](storage.md) owns database transaction and query
-implementation. Web client behavior belongs to `web.md` once that focused
-document is created.
+implementation. Web client behavior belongs to the
+[Web architecture](web.md).
 
 ## In-process API and graph observer feed — settled
 
@@ -105,16 +105,13 @@ edges at level 0 are not normal visible materialized edges.
 `CompactId` is private to storage/processing. Each HTTP graph response has
 its own small numeric references and an included local ID-to-hash dictionary
 covering **all** hashes it references, including off-window parent endpoints
-and merge-set members. The Web graph/domain model identifies blocks by hash
-only. These local IDs are not persistent across responses or instances;
-coordinates may diverge across independently allocated DBs.
+and merge-set members. These local IDs are not persistent across responses or
+instances; coordinates may diverge across independently allocated DBs.
 
 The public block projection preserves its **actual direct-parent list** even
 when some parents are outside the response or PP boundary and have no
-drawable edge. Web identifies a present Genesis by zero actual direct
-parents, never by zero visible parent edges or by an ORIGIN marker.
-This marker requires neither a persisted network Genesis hash nor a dedicated
-Genesis-hash API endpoint.
+drawable edge. This representation allows Genesis recognition without a
+persisted network Genesis hash or a dedicated Genesis-hash API endpoint.
 
 ## Snapshot, revision, delta, SSE, and ETags — settled
 
@@ -173,7 +170,6 @@ connection, but reconnection is not exactly-once. On connect the server
 immediately emits the latest cursor; subsequent publications emit updated
 cursors. Slow clients get coalesced cursor notifications and, if persistently
 behind, are disconnected; they reconnect and use HTTP delta or snapshot.
-The Web keeps one in-flight catch-up loop and coalesces desired cursors.
 
 `representation_version` is the settled term for the graph payload schema.
 An ETag for a head snapshot distinguishes epoch, revision, effective window,
