@@ -6,6 +6,8 @@ implementation, or review precedence.
 
 - [`handoffs/`](handoffs/) contains the architecture handoffs that preceded the
   focused-document authority cutover.
+- [`audits/`](audits/) contains historical reconciliation evidence and working
+  reports.
 
 Current architecture and document authority are defined by
 [`docs/architecture/README.md`](../architecture/README.md) and

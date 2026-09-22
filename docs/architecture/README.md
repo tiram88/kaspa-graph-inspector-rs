@@ -120,7 +120,7 @@ behavior.
 | §17, Web behavior | `web.md`. Wire contracts consumed by the browser remain in `api.md`. | Verified and cut over |
 | §18, Resource isolation and scalability | `overview.md` owns the system-wide isolation model. Concrete component budgets and saturation behavior remain with each component; API budgets remain in `api.md`. | Verified and cut over |
 | §19, Tests and verification obligations | `verification.md`, organized by the architecture owner being verified. Exact unresolved test-matrix breadth remains a deferred decision rather than a duplicate contract. | Verified and cut over |
-| §20, Remaining implementation decisions and v2.1 boundary | Unresolved v2 architecture goes to `../decisions/open.md`; constrained implementation choices go to `../decisions/deferred.md`; execution order goes to `../implementation-sequence.md`; work outside v2 remains in `../future-work.md`. | Verified and cut over |
+| §20, Remaining implementation decisions and v2.1 boundary | Unresolved v2 architecture goes to `../decisions/open.md`; constrained implementation choices go to `../decisions/deferred.md`; execution order goes to `../implementation/sequence.md`; work outside v2 remains in `../future-work.md`. | Verified and cut over |
 | §21, Rejected designs | `../decisions/rejected.md` or `../decisions/superseded.md`, according to whether the design was never accepted or was replaced after acceptance. Any current replacement behavior remains in its focused architecture owner. | Verified and cut over |
 
 ## Coverage verification

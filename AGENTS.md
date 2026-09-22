@@ -14,7 +14,8 @@ Before changing or reviewing this repository, read in this order:
    registers, and any accepted standalone ADRs in `docs/decisions/`.
 5. `docs/decisions/open.md` or `docs/decisions/deferred.md` when the work
    touches an unresolved requirement or implementation choice.
-6. `docs/implementation-status.md` and relevant reports in `docs/reviews/` for non-normative project state.
+6. `docs/implementation/status.md` and relevant reports in `docs/reviews/`
+   for non-normative project state.
 
 The handoffs under `docs/history/handoffs/` preserve the original bootstrap
 and consolidation record. They are provenance only and do not participate in
@@ -31,14 +32,14 @@ focused architecture and later accepted ADRs
 
 ## Audit material
 
-`docs/audits/` contains historical reconciliation evidence and working
+`docs/history/audits/` contains historical reconciliation evidence and working
 reports. Audit files are non-normative: they do not participate in
 architecture precedence and must not be used as implementation or review
 contracts. Trace every accepted audit outcome to the current architecture,
 an accepted ADR, or the applicable decision-status register as appropriate.
 
-Version control tracks the complete `docs/audits/` directory for historical
-provenance. Tracking an audit does not give it normative authority.
+Version control tracks the complete `docs/history/audits/` directory for
+historical provenance. Tracking an audit does not give it normative authority.
 
 ## Chat archives
 
@@ -74,7 +75,7 @@ The Architecture role does not implement production code unless explicitly asked
 
 The Implementation role implements accepted architecture, tests, and migrations. It must read the applicable architecture before editing and must not invent or silently simplify architecture.
 
-When implementation exposes an ambiguity or conflict, stop at the architectural boundary, document the evidence, and ask the Architecture role for a decision. Implementation choices that do not change accepted semantics may be recorded in code, tests, or `docs/implementation-status.md` as appropriate.
+When implementation exposes an ambiguity or conflict, stop at the architectural boundary, document the evidence, and ask the Architecture role for a decision. Implementation choices that do not change accepted semantics may be recorded in code, tests, or `docs/implementation/status.md` as appropriate.
 
 ## Review role
 

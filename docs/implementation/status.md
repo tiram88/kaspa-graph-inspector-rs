@@ -12,5 +12,5 @@ commit containing the architecture authority cutover is the stable baseline
 for implementation. Open architecture requirements continue to block only
 their dependent work.
 
-The non-normative [implementation sequence](implementation-sequence.md) records
+The non-normative [implementation sequence](sequence.md) records
 the proposed work order and prerequisites.
