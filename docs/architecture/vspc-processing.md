@@ -27,10 +27,14 @@ destination =
 ```
 
 Every admitted nonempty change must have nonempty `added`. A removed-only
-change is a typed unsupported invariant fault; it has no invented fallback
-destination. Its upstream reachability remains to verify. An empty V2 page is
-synchronization information, not a VSPC event. A wholly empty change remains
-deferred.
+change is impossible under pinned upstream selected-sink monotonicity and has
+no invented fallback destination. NodeService rejects that notification shape
+with `Require(Resync)`; the synthetic pump rejects it with its bounded
+whole-attempt `Retry` policy. Neither source admits it to VspcProcessor.
+NodeService also filters a raw VirtualChainChanged notification with both
+vectors empty before the bounded send, so VspcProcessor never receives that
+valid upstream no-op. It earns no overlap credit and changes no state. An
+empty V2 page is distinct synchronization information, not a VSPC event.
 
 Pending changes are stored as `VspcChange` values directly. Ready representation:
 

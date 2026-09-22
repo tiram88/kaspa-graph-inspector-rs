@@ -36,8 +36,17 @@ The following rejected and superseded designs are already settled and must not b
   assembled across changing virtual views: rejected. The rolling sink is the
   normal Catchup path; a material omission exposed during strict pre-Catchup
   processing requests `Require(Resync)` through the existing fault path.
-- Deriving a destination from a removed-only VSPC change: unsupported
-  invariant fault; admitted nonempty changes require `added.last()`.
+- Deriving a destination from a removed-only VSPC change: rejected. Pinned
+  upstream selected-sink monotonicity makes the shape impossible. A raw
+  notification disables routing and requires Resync. A synthetic response
+  aborts the whole recovery attempt without cursor advancement: its first
+  three occurrences per validated RPC generation each produce typed Retry,
+  and the fourth is Fatal. A new RPC generation or `EnteredLive` resets the
+  counter.
+- Admitting a wholly empty upstream VirtualChainChanged notification to
+  VspcProcessor: rejected. NodeService discards this valid no-op before its
+  bounded send; it earns no overlap credit and is distinct from an empty VSPC
+  V2 page.
 - Enabling local notification routing before both remote subscriptions have
   started: routing remains Disabled through activation, dropping callbacks
   until both starts succeed.

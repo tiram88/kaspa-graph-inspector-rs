@@ -72,13 +72,24 @@ enum FaultDisposition {
 }
 ```
 
-- `Retry` is meaningful only while a recovery is active.
+- `Retry` is meaningful only while a recovery is active. It aborts and fully
+  deactivates the current attempt; after Idle and backoff, Supervisor reruns
+  fresh preparation for the strongest unsatisfied recovery obligation. It
+  never retries one RPC or page in place.
 - A recoverable fault in Live must require at least `Resync`.
-- Fault strings are diagnostics and must never drive control flow.
+- Fault strings are diagnostics and must never drive control flow; retry
+  causes used by policy are typed.
 - A nonmaterialized hash directly named in VSPC `added`/`removed` and a
   resolver-confirmed unavailable dependency each require Rebuild directly:
   the DB can no longer be trusted against node state. RPC connection failure
   is not proof of dependency unavailability.
+
+For the typed synthetic removed-only VSPC fault, Supervisor retains a counter
+across attempts on the same `ValidatedRpcClient` generation. The first three
+occurrences each produce `Retry`; the fourth is `Fatal`. A new validated RPC
+generation or `EnteredLive` resets it; changing recovery mode on the same
+generation does not. Removed-only notifications require Resync and do not
+consume this pump-specific budget.
 
 Fault ownership:
 
@@ -273,6 +284,10 @@ retains a minimal acceptance-data envelope and a nonempty response has an
 advancing `added.last()` cursor. The acceptance-data budget may shorten the
 response to a complete prefix. Preserve this behavior with a pinned regression
 fixture. An empty V2 page is a pump/Catchup hint, not a VSPC change.
+A response with empty `added` and nonempty `removed` violates the pinned sink
+monotonicity invariant. Do not dispatch it or advance the cursor; abort the
+complete recovery attempt using the bounded synthetic removed-only `Retry`
+policy above.
 
 ```text
 request VSPC V2 from current low_hash

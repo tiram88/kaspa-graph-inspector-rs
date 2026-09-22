@@ -75,6 +75,13 @@ Disabled | Enabled | Retired
 - An Enabled `BlockAdded` without `block.verbose_data` cannot provide the
   selected parent and merge sets required for materialization and reports
   `Require(Resync)`.
+- Before attempting the bounded VSPC send, classify a raw
+  VirtualChainChanged notification with empty `added`. When `removed` is also
+  empty, discard the valid upstream no-op: it consumes no channel capacity,
+  earns no overlap credit, changes no committed state, and requests no
+  recovery. When `removed` is nonempty, do not enqueue it; disable routing and
+  report `Require(Resync)` because the notification violates selected-sink
+  monotonicity.
 - Retired never routes again.
 
 The subscription state belongs to `ValidatedRpcClient` and cannot outlive its
@@ -112,6 +119,13 @@ block-only coverage and sends VspcProcessor its existing Live command;
 BlockProcessor remains in Catchup. NodeService does not replay dropped
 callbacks.
 Disabling is an immediate local cutoff, not a quiescence or transport fence.
+
+Pinned rusty-kaspa inspection establishes that virtual processing can emit a
+fully empty VirtualChainChanged notification when processing a side block
+does not move the selected-chain sink. This notification filter is distinct
+from handling an empty VSPC V2 RPC page in the synchronization pump. Pinned
+sink selection cannot produce a removed-only notification; that shape is the
+fault above, not another no-op.
 
 Only NodeService sees raw rusty-kaspa notification types. The only VSPC payload
 outside NodeService is:
