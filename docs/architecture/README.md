@@ -100,28 +100,41 @@ authority.
 
 | Handoff section | Target owner and dispatch rule | Migration status |
 |---|---|---|
-| §0, Reading rules and scope | `README.md` for architecture authority and navigation; `../README.md` for repository-wide document classes. Scope constraints on future work go to `../future-work.md`. | Extracted and reconciled; final verification pending |
-| §1, System shape and ownership | `overview.md`. Shared type names introduced only as vocabulary go to `domain-model.md`. | Extracted; final verification pending |
-| §2, Shared identities and graph vocabulary | `domain-model.md`. Persistence-specific enforcement and schema representation go to `storage.md`. | Extracted; final verification pending |
-| §3, Lifecycle, intent, commands, and channels | `processing-lifecycle.md` for lifecycle, command direction, channel semantics, fault classification, retries, and milestones. Reusable identity/value definitions go to `domain-model.md`; service-specific reconnect rules go to `node-service.md` or `storage.md`. | Extracted and reconciled; final verification pending |
-| §4, NodeService and validated RPC | `node-service.md`. | Extracted and reconciled; final verification pending |
-| §5, StorageService lifecycle and DB bootstrap | `storage.md`. Supervisor reactions to StorageService state link to `processing-lifecycle.md`. | Extracted and reconciled; final verification pending |
-| §6, Retained persistence model and cache | `storage.md`. Shared materiality vocabulary links to `domain-model.md`. | Extracted and reconciled; final verification pending |
-| §7, Block materialization and PP boundary | `storage.md` owns materialization transactions, schema invariants, and cache publication; `block-processing.md` owns when BlockProcessor requests those operations and reacts to PP sealing. | Extracted and reconciled; final verification pending |
-| §8, BlockProcessor, orphan topology, dependency resolution | `block-processing.md`. Cross-worker recovery dispositions link to `processing-lifecycle.md`. | Extracted and reconciled; final verification pending |
-| §9, VSPC changes, readiness, history, and atomic coloring | `vspc-processing.md` owns sequencing and readiness; `storage.md` owns the atomic coloring transaction; shared VSPC value definitions go to `domain-model.md`. | Extracted and reconciled; final verification pending |
-| §10, ResyncEngine preparation and common pump | `processing-lifecycle.md`. Node RPC normalization used by the pump links to `node-service.md`; component-local admission behavior links to `block-processing.md` and `vspc-processing.md`. | Extracted and reconciled; final verification pending |
-| §11, Catchup, overlap, Live, and late transport messages | `processing-lifecycle.md` owns phase transitions, coverage admission, timing, and global Live entry. `block-processing.md` and `vspc-processing.md` own their local phase behavior. `node-service.md` owns routing and transport-message handling. | Extracted and reconciled; final verification pending |
-| §12, Teardown and delivery/failure semantics | `processing-lifecycle.md` owns teardown order, barriers, owner-directed faults, and session completion. Component-specific draining duties remain in the relevant component document. | Extracted and reconciled; final verification pending |
-| §13, In-process API and graph observer feed | `api.md`. Producer-side observer publication guarantees remain in the relevant processor document and are referenced by `api.md`. | Extracted; producer ownership reconciled, final verification pending |
-| §14, API snapshot, revision, delta, SSE, and ETags | `api.md`. | Extracted; final verification pending |
-| §15, Reset and recovery-time API availability | `api.md` owns Reset and publication behavior; `processing-lifecycle.md` owns when lifecycle milestones trigger those API operations. | Extracted and reconciled; final verification pending |
-| §16, DAA navigation and window API | `api.md`. Storage query semantics needed by these endpoints remain in `storage.md`. | Extracted; final verification pending |
-| §17, Web behavior | `web.md`. Wire contracts consumed by the browser remain in `api.md`. | Extracted; final verification pending |
-| §18, Resource isolation and scalability | `overview.md` owns the system-wide isolation model. Concrete component budgets and saturation behavior remain with each component; API budgets remain in `api.md`. | Extracted and reconciled; final verification pending |
-| §19, Tests and verification obligations | `verification.md`, organized by the architecture owner being verified. Exact unresolved test-matrix breadth remains a deferred decision rather than a duplicate contract. | Extracted and reconciled; final verification pending |
-| §20, Remaining implementation decisions and v2.1 boundary | Unresolved v2 architecture goes to `../decisions/open.md`; constrained implementation choices go to `../decisions/deferred.md`; execution order goes to `../implementation/sequence.md`; work outside v2 remains in `../future-work.md`. | Extracted and reconciled; final verification pending |
-| §21, Rejected designs | `../decisions/rejected.md` or `../decisions/superseded.md`, according to whether the design was never accepted or was replaced after acceptance. Any current replacement behavior remains in its focused architecture owner. | Extracted and reconciled; final verification pending |
+| §0, Reading rules and scope | `README.md` for architecture authority and navigation; `../README.md` for repository-wide document classes. Scope constraints on future work go to `../future-work.md`. | Coverage verified; authority cutover pending |
+| §1, System shape and ownership | `overview.md`. Shared type names introduced only as vocabulary go to `domain-model.md`. | Coverage verified; authority cutover pending |
+| §2, Shared identities and graph vocabulary | `domain-model.md`. Persistence-specific enforcement and schema representation go to `storage.md`. | Coverage verified; authority cutover pending |
+| §3, Lifecycle, intent, commands, and channels | `processing-lifecycle.md` for lifecycle, command direction, channel semantics, fault classification, retries, and milestones. Reusable identity/value definitions go to `domain-model.md`; service-specific reconnect rules go to `node-service.md` or `storage.md`. | Coverage verified; authority cutover pending |
+| §4, NodeService and validated RPC | `node-service.md`. | Coverage verified; authority cutover pending |
+| §5, StorageService lifecycle and DB bootstrap | `storage.md`. Supervisor reactions to StorageService state link to `processing-lifecycle.md`. | Coverage verified; authority cutover pending |
+| §6, Retained persistence model and cache | `storage.md`. Shared materiality vocabulary links to `domain-model.md`. | Coverage verified; authority cutover pending |
+| §7, Block materialization and PP boundary | `storage.md` owns materialization transactions, schema invariants, and cache publication; `block-processing.md` owns when BlockProcessor requests those operations and reacts to PP sealing. | Coverage verified; authority cutover pending |
+| §8, BlockProcessor, orphan topology, dependency resolution | `block-processing.md`. Cross-worker recovery dispositions link to `processing-lifecycle.md`. | Coverage verified; authority cutover pending |
+| §9, VSPC changes, readiness, history, and atomic coloring | `vspc-processing.md` owns sequencing and readiness; `storage.md` owns the atomic coloring transaction; shared VSPC value definitions go to `domain-model.md`. | Coverage verified; authority cutover pending |
+| §10, ResyncEngine preparation and common pump | `processing-lifecycle.md`. Node RPC normalization used by the pump links to `node-service.md`; component-local admission behavior links to `block-processing.md` and `vspc-processing.md`. | Coverage verified; authority cutover pending |
+| §11, Catchup, overlap, Live, and late transport messages | `processing-lifecycle.md` owns phase transitions, coverage admission, timing, and global Live entry. `block-processing.md` and `vspc-processing.md` own their local phase behavior. `node-service.md` owns routing and transport-message handling. | Coverage verified; authority cutover pending |
+| §12, Teardown and delivery/failure semantics | `processing-lifecycle.md` owns teardown order, barriers, owner-directed faults, and session completion. Component-specific draining duties remain in the relevant component document. | Coverage verified; authority cutover pending |
+| §13, In-process API and graph observer feed | `api.md`. Producer-side observer publication guarantees remain in the relevant processor document and are referenced by `api.md`. | Coverage verified; authority cutover pending |
+| §14, API snapshot, revision, delta, SSE, and ETags | `api.md`. | Coverage verified; authority cutover pending |
+| §15, Reset and recovery-time API availability | `api.md` owns Reset and publication behavior; `processing-lifecycle.md` owns when lifecycle milestones trigger those API operations. | Coverage verified; authority cutover pending |
+| §16, DAA navigation and window API | `api.md`. Storage query semantics needed by these endpoints remain in `storage.md`. | Coverage verified; authority cutover pending |
+| §17, Web behavior | `web.md`. Wire contracts consumed by the browser remain in `api.md`. | Coverage verified; authority cutover pending |
+| §18, Resource isolation and scalability | `overview.md` owns the system-wide isolation model. Concrete component budgets and saturation behavior remain with each component; API budgets remain in `api.md`. | Coverage verified; authority cutover pending |
+| §19, Tests and verification obligations | `verification.md`, organized by the architecture owner being verified. Exact unresolved test-matrix breadth remains a deferred decision rather than a duplicate contract. | Coverage verified; authority cutover pending |
+| §20, Remaining implementation decisions and v2.1 boundary | Unresolved v2 architecture goes to `../decisions/open.md`; constrained implementation choices go to `../decisions/deferred.md`; execution order goes to `../implementation/sequence.md`; work outside v2 remains in `../future-work.md`. | Coverage verified; authority cutover pending |
+| §21, Rejected designs | `../decisions/rejected.md` or `../decisions/superseded.md`, according to whether the design was never accepted or was replaced after acceptance. Any current replacement behavior remains in its focused architecture owner. | Coverage verified; authority cutover pending |
+
+## Coverage verification
+
+All handoff sections §0–§21 have been checked against their dispatched
+owners and the later accepted decisions incorporated during reconciliation.
+Every current behavioral contract, open requirement, deferred implementation
+choice, v2.1 boundary, and rejected or superseded design has an owner outside
+the handoff. Local links and heading anchors in the current architecture and
+decision documents have also been checked.
+
+This verification completes content dispatch only. The focused documents do
+not become authoritative until the explicit cutover below; their migration
+banners and the handoff locations remain unchanged until then.
 
 ## Cutover conditions
 
