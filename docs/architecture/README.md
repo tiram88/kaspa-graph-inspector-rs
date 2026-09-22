@@ -19,6 +19,36 @@ No handoff moves to history until every section has been dispatched, checked
 against subsequent accepted decisions, and covered by the focused
 architecture.
 
+## Contract conventions and scope
+
+The repository-wide collaboration roles, reading order, and conflict rules are
+defined in [`AGENTS.md`](../../AGENTS.md). Within architecture documents:
+
+- text marked **settled** is a requirement;
+- Rust, SQL, and message fragments fix semantic shape only and need not compile
+  as written;
+- crate layout, libraries, concrete SQL types, capacities, locks, and other
+  mechanics remain implementation choices unless a contract fixes them; and
+- a conflict must be reported and resolved in the owning architecture or an
+  accepted ADR, never blended silently.
+
+The KGI v2 system boundary is defined in [overview.md](overview.md). Work listed
+in [future-work.md](../future-work.md) is outside v2 until promoted by an
+accepted architecture decision. Open requirements and implementation choices
+are tracked separately in the [decision register](../decisions/README.md).
+
+Legacy handoffs may use these names:
+
+| Legacy name | Current name |
+|---|---|
+| `NodeClient` | `NodeService` |
+| `ValidatedStorageService` | `ValidatedDbClient` |
+| `Cycle 1` | `PreSeal` |
+
+Behavioral replacements are recorded in
+[superseded.md](../decisions/superseded.md) and rejected proposals in
+[rejected.md](../decisions/rejected.md).
+
 ## Target focused documents
 
 After cutover, the focused architecture documents collectively own the
@@ -70,7 +100,7 @@ authority.
 
 | Handoff section | Target owner and dispatch rule | Migration status |
 |---|---|---|
-| §0, Reading rules and scope | `README.md` for architecture authority and navigation; `../README.md` for repository-wide document classes. Scope constraints on future work go to `../future-work.md`. | Pending |
+| §0, Reading rules and scope | `README.md` for architecture authority and navigation; `../README.md` for repository-wide document classes. Scope constraints on future work go to `../future-work.md`. | Extracted and reconciled; final verification pending |
 | §1, System shape and ownership | `overview.md`. Shared type names introduced only as vocabulary go to `domain-model.md`. | Extracted; final verification pending |
 | §2, Shared identities and graph vocabulary | `domain-model.md`. Persistence-specific enforcement and schema representation go to `storage.md`. | Extracted; final verification pending |
 | §3, Lifecycle, intent, commands, and channels | `processing-lifecycle.md` for lifecycle, command direction, channel semantics, fault classification, retries, and milestones. Reusable identity/value definitions go to `domain-model.md`; service-specific reconnect rules go to `node-service.md` or `storage.md`. | Extracted and reconciled; final verification pending |

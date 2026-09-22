@@ -47,8 +47,9 @@ reference cycles are forbidden. `Arc<Component>` is a valid initial shape;
 thin handles are not required.
 
 Every worker serializes its local state changes in one event loop despite
-concurrent inputs. Notifications travel directly from NotificationRouter to
-the processors and never pass through ResyncEngine.
+concurrent inputs. Live ingestion remains subscription-based. Notifications
+travel directly from NotificationRouter to the processors and never pass
+through ResyncEngine.
 
 ApiService is an in-process, read-only observer. Its work and freshness have
 lower priority than processing. The [API contract](api.md) owns graph-update

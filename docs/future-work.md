@@ -2,6 +2,11 @@
 
 These items are explicitly outside the KGI v2 requirement and are not open v2 architecture questions.
 
+They do not weaken or delay the accepted v2 contract. A candidate enters v2
+only through an accepted architecture decision that updates its focused owner
+and removes or narrows the entry here. Record new future candidates when they
+are accepted; do not introduce them implicitly during implementation.
+
 ## KGI v2.1 candidate list
 
 - low-frequency Live VSPC consistency probe;

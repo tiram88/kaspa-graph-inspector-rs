@@ -14,8 +14,9 @@ remain unchanged:
 2. Existing focused architecture documents apply where they agree with that
    handoff.
 3. Later accepted decisions may amend the architecture explicitly.
-4. Open questions, implementation plans, reviews, audits, issue records, and
-   chat archives do not silently alter the contract.
+4. Open and deferred decision registers, implementation plans, reviews,
+   audits, issue records, and chat archives do not silently alter the
+   contract.
 
 The target structure is recorded in
 [`architecture/README.md`](architecture/README.md). Paths identified there as
