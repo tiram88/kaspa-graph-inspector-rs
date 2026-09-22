@@ -6,8 +6,11 @@ become durable project constraints.
 
 1. Cargo workspace, crate, and module layout.
 2. PostgreSQL Rust client, migration framework, and concrete SQL types.
-3. Exact capacities for processor channels, orphan memory, caches, RPC
-   concurrency, delta history, and HTTP work.
+3. Exact capacities for processor channels, orphan and VSPC pending memory,
+   caches, DependencyResolver and RPC concurrency, delta history, and HTTP
+   work. Local RPC scheduling and batching remain implementation choices only
+   where the focused architecture does not fix request boundaries or batch
+   semantics.
 4. Orphan occupancy threshold within the settled range of approximately one
    quarter through one third.
 5. Detailed Tokio fairness and drain mechanics.
@@ -24,9 +27,6 @@ become durable project constraints.
 10. Exhaustive parity matrix and additional fixtures beyond the required
     [verification baseline](../architecture/verification.md).
 11. Shutdown timeouts and escalation policy.
-12. Fine code-level details formerly grouped under design point 10.4.4. That
-    historical label grants no freedom to alter a settled contract.
-
 Unlisted code-level choices remain implementation details only while they
 preserve every settled contract and do not resolve an item in
 [open.md](open.md) implicitly.
