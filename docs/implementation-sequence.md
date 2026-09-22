@@ -1,24 +1,19 @@
 # KGI v2 implementation sequence
 
-Status: planning only. Prepared against architecture baseline `c51559e` on
-20 September 2026. This is a non-normative execution plan; the consolidated
-[architecture handoff](architecture/handoff-2026-09-20.md) and later accepted
-ADRs govern behavior.
+Status: planning only. This is a non-normative execution plan; the focused
+documents named by the [architecture index](architecture/README.md) and later
+accepted ADRs govern behavior.
 
 ## Entry gate
 
-**Do not start production code, migrations, or tests until the architecture
-bootstrap review is resolved and its accepted result is committed as a stable
-baseline.** `c51559e` is committed, but its review is pending. The Review role
-should review that stable commit against `AGENTS.md` and the consolidated
-handoff. The Architecture role should resolve any normative findings in
-focused architecture or ADRs and commit the resulting baseline. Implementation
-then records the reviewed baseline commit in `docs/implementation-status.md`.
+The architecture bootstrap, reconciliation, focused-document extraction, and
+losslessness reviews are resolved. Production implementation may begin from a
+committed revision containing the authority cutover. Implementation records
+that baseline revision in `docs/implementation-status.md` before its first
+production change.
 
-The review must cover the new in-process API and Reset/read barrier as well as
-processing, because both are in the accepted v2 scope. The older focused
-documents are useful detail where they agree with the 20 September handoff;
-their superseded wording is not an alternate implementation choice.
+Open architecture requirements still block their dependent implementation;
+they do not reinstate a repository-wide implementation hold.
 
 ## Sequence after the gate
 
@@ -31,7 +26,7 @@ their superseded wording is not an alternate implementation choice.
 | 5. Build processor workers | Implement OrphanManager and DependencyResolver, then BlockProcessor's priority/gates/materialization path. Implement VspcProcessor's pending indexes, source/destination continuity, phase-specific pruning and overlap. Route committed graph updates on one ordered channel, with block update before `PersistedBlock` delivery. | Worker tests for topology, cancellation races, priorities, full versus closed channels, PreSeal seal transition, VSPC sequencing, duplicate detection, and observer loss. |
 | 6. Publish the in-process graph API | Implement complete 1000-level HGC snapshot/replay, external parent endpoints, invalidation/reload and GraphEpoch revisions. Benchmark wire formats end to end, then finalize response schema, response-local hash dictionaries, composable depth-independent deltas, SSE cursors, ETags, DAA/window queries, and status. Set bounded API resource budgets and `MAX_WINDOW_DEPTH`. Reopen historical reads only with a coherent new image. | Snapshot/replay, terminal observer loss, VSPC source continuity, delta composition/expiry, stale epoch, slow SSE clients, DAA tie/floor, crossing edges, and API saturation tests. |
 | 7. Integrate recovery lifecycle | Implement ResyncEngine preparation, common GetBlocks/VSPC pump, Catchup overlap, the split component-local Live transition, the fixed-tip block-coverage gate, session teardown, and Supervisor recovery intent. Start usable RPC/DB acquisition concurrently. Route rebuild through the tested API Reset acknowledgement before DB clear. | End-to-end Resync, Rebuild, recovery escalation, interruption, retained `--clear-db` intent, session-clone release, VSPC synthetic-input abandonment at component Live, successful-enqueue accounting, cross-page dedup, coverage timing and page caps, continued VSPC notification progress, current-DB-sink Resync disposition, and complete-page global Live-boundary tests. |
-| 8. Integrate Web behavior and verify release | Adapt the Web graph model to hash identity, SSE cursor catch-up, head-following and fixed-view freeze, DAA anchor behavior, and distance-adaptive updates. Run Go parity, pinned-node, PostgreSQL, browser, recovery, and resource-isolation tests against the complete stack. | A stable reviewable implementation commit/diff, updated implementation status, and evidence for each handoff §19 obligation. |
+| 8. Integrate Web behavior and verify release | Adapt the Web graph model to hash identity, SSE cursor catch-up, head-following and fixed-view freeze, DAA anchor behavior, and distance-adaptive updates. Run Go parity, pinned-node, PostgreSQL, browser, recovery, and resource-isolation tests against the complete stack. | A stable reviewable implementation commit/diff, updated implementation status, and evidence for the focused [verification contract](architecture/verification.md). |
 
 Steps 5 and 6 may be developed in parallel after their shared observer and
 Reset protocols are fixed, but integration must preserve their causal order.
@@ -42,8 +37,8 @@ image.
 ## Decisions to make during implementation
 
 The [deferred decision register](decisions/deferred.md) tracks the choices left
-to implementation. The handoff leaves concrete layout, SQL types and
-libraries, capacities,
+to implementation. The focused architecture and deferred register leave
+concrete layout, SQL types and libraries, capacities,
 fairness mechanics, HTTP limits, `MAX_WINDOW_DEPTH`, API wire format and URLs,
 adaptive Web delay, and the precise historical-read reset mechanism open.
 Choose and document these with tests while preserving settled behavior.

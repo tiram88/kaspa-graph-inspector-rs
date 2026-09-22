@@ -1,9 +1,5 @@
 # KGI v2 architecture overview
 
-> Focused extraction; during the documentation reorganization, the current
-> consolidated contract remains
-> [handoff-2026-09-20.md](handoff-2026-09-20.md), which prevails on conflicts.
-
 ## Scope and ownership
 
 This document owns the system boundary, component ownership, direction of

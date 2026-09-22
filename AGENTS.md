@@ -7,21 +7,24 @@ This repository uses three distinct collaboration roles. The repository is the d
 Before changing or reviewing this repository, read in this order:
 
 1. This `AGENTS.md`.
-2. `docs/architecture/handoff-2026-09-20.md` (the current consolidated contract).
-3. `docs/architecture/overview.md` and every focused architecture document relevant to the work.
+2. `docs/architecture/README.md` for architecture ownership and navigation.
+3. `docs/architecture/overview.md` and every focused architecture document
+   relevant to the work.
 4. `docs/decisions/README.md`, the settled, rejected, and superseded
    registers, and any accepted standalone ADRs in `docs/decisions/`.
 5. `docs/decisions/open.md` or `docs/decisions/deferred.md` when the work
    touches an unresolved requirement or implementation choice.
 6. `docs/implementation-status.md` and relevant reports in `docs/reviews/` for non-normative project state.
 
-`docs/architecture/handoff-2026-09-17.md` is the verbatim source handoff for the original bootstrap. Consult it for provenance, but its superseded wording is not the current contract. Focused documents were extracted from that bootstrap and cover their named components; the consolidated handoff contains broader cross-component and API contracts. Where they differ, the later accepted decisions recorded in `handoff-2026-09-20.md` control; flag any ambiguity rather than blending conflicting rules.
+The handoffs under `docs/history/handoffs/` preserve the original bootstrap
+and consolidation record. They are provenance only and do not participate in
+normative precedence. Current behavior and rationale belong to the focused
+architecture owner identified by `docs/architecture/README.md`.
 
 Normative precedence is:
 
 ```text
-20 September consolidated handoff and later accepted ADRs
-    > older focused architecture where superseded
+focused architecture and later accepted ADRs
     > implementation and tests
     > implementation-status and review notes
 ```
@@ -54,19 +57,7 @@ contents unless the user explicitly asks them to work on a specific issue
 record. These records are non-normative and do not participate in KGI
 architecture, implementation, or review precedence.
 
-## Temporary architecture reconciliation hold
-
-The 20 September handoff is being verified against
-`docs/chats/initial_chat.md` before production implementation begins. For
-decisions made before that handoff, the last clearly accepted position in the
-original exchange is presumed to reflect the intended design unless a later
-accepted decision supersedes it. If that evidence conflicts with the handoff,
-do not implement the disputed rule.
-Architecture must verify the decision and record its resolution in a focused
-architecture document or ADR, then reconcile the handoff. The transcript and
-audit reports are evidence for this work, not standalone implementation
-specifications. Production code, tests, and migrations remain gated until the
-reconciled architecture is reviewed and committed as a stable baseline.
+## Architecture conflicts
 
 If repository evidence conflicts with accepted architecture, flag the conflict. Do not resolve it implicitly. Record accepted architecture changes immediately in a focused architecture document or ADR.
 
@@ -98,4 +89,5 @@ Review findings belong in `docs/reviews/` when a durable report is requested. Fi
   `docs/decisions/superseded.md` must not be reintroduced implicitly.
 - Open implementation choices must preserve all settled contracts.
 - KGI v2.1 candidates in `docs/future-work.md` are outside the KGI v2 implementation unless explicitly promoted through an architecture decision.
-- Production work must not begin until the architecture bootstrap has been reviewed and committed as a stable baseline.
+- Open architecture requirements must be resolved before dependent production
+  work proceeds.

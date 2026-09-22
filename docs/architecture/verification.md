@@ -1,8 +1,5 @@
 # Verification contract
 
-> Focused extraction; the current consolidated contract is
-> [handoff-2026-09-20.md](handoff-2026-09-20.md), which prevails on conflicts.
-
 ## Scope and evidence rules
 
 This document owns the minimum executable evidence required for the KGI v2

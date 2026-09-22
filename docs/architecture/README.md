@@ -1,23 +1,20 @@
-# KGI v2 architecture map
+# KGI v2 architecture index
 
-This document defines the target ownership boundaries for the architecture
-reorganization. It is a navigation and migration contract, not a replacement
-for any behavioral contract.
+This document defines the current ownership boundaries and navigation for the
+KGI v2 architecture. It contains no component behavior; the focused documents
+below own their named contracts.
 
-## Authority during migration
+## Architecture authority
 
-Until the explicit authority cutover:
+The focused architecture documents listed below collectively form the current
+normative KGI v2 architecture. Each behavioral contract has one focused owner.
+Accepted changes update that owner and the applicable decision register in the
+same change.
 
-- [`handoff-2026-09-20.md`](handoff-2026-09-20.md) remains the consolidated
-  normative contract;
-- the existing focused documents remain subordinate where their wording
-  differs from that handoff; and
-- a newly extracted document is not authoritative merely because its target
-  path appears below.
-
-No handoff moves to history until every section has been dispatched, checked
-against subsequent accepted decisions, and covered by the focused
-architecture.
+The [17 September](../history/handoffs/handoff-2026-09-17.md) and
+[20 September](../history/handoffs/handoff-2026-09-20.md) handoffs preserve
+provenance only. They do not participate in normative precedence or resolve a
+conflict with a focused owner.
 
 ## Contract conventions and scope
 
@@ -49,13 +46,12 @@ Behavioral replacements are recorded in
 [superseded.md](../decisions/superseded.md) and rejected proposals in
 [rejected.md](../decisions/rejected.md).
 
-## Target focused documents
+## Focused documents
 
-After cutover, the focused architecture documents collectively own the
-current behavioral contract. Each contract has one owning document; other
-documents link to it instead of restating it.
+Each contract has one owning document; other documents link to it instead of
+restating it.
 
-| Target document | Sole concern |
+| Document | Sole concern |
 |---|---|
 | `README.md` | Architecture authority, reading order, ownership boundaries, and navigation. It contains no system behavior. |
 | `overview.md` | System boundary, component ownership, process and data-flow shape, and system-wide resource isolation. |
@@ -71,7 +67,7 @@ documents link to it instead of restating it.
 
 ## Ownership rules
 
-The dispatch follows these rules:
+The architecture follows these rules:
 
 1. A behavioral rule has exactly one focused owner.
 2. Shared names and value semantics belong to `domain-model.md`; component
@@ -94,37 +90,38 @@ The dispatch follows these rules:
 8. Historical handoffs and audits provide provenance only and never resolve a
    conflict with current architecture.
 
-## Handoff dispatch map
+## Handoff coverage map
 
-Every numbered section of the 20 September handoff has the following target.
-Where a section contains more than one concern, the row states the exact
-split. This table controls the migration work but does not change behavioral
-authority.
+This table records the verified dispatch of every numbered section in the
+historical [20 September handoff](../history/handoffs/handoff-2026-09-20.md).
+Where a section contained more than one concern, the row records the exact
+split. The focused owner, rather than this historical mapping, defines current
+behavior.
 
-| Handoff section | Target owner and dispatch rule | Migration status |
+| Handoff section | Focused owner and dispatch rule | Cutover status |
 |---|---|---|
-| §0, Reading rules and scope | `README.md` for architecture authority and navigation; `../README.md` for repository-wide document classes. Scope constraints on future work go to `../future-work.md`. | Coverage verified; authority cutover pending |
-| §1, System shape and ownership | `overview.md`. Shared type names introduced only as vocabulary go to `domain-model.md`. | Coverage verified; authority cutover pending |
-| §2, Shared identities and graph vocabulary | `domain-model.md`. Persistence-specific enforcement and schema representation go to `storage.md`. | Coverage verified; authority cutover pending |
-| §3, Lifecycle, intent, commands, and channels | `processing-lifecycle.md` for lifecycle, command direction, channel semantics, fault classification, retries, and milestones. Reusable identity/value definitions go to `domain-model.md`; service-specific reconnect rules go to `node-service.md` or `storage.md`. | Coverage verified; authority cutover pending |
-| §4, NodeService and validated RPC | `node-service.md`. | Coverage verified; authority cutover pending |
-| §5, StorageService lifecycle and DB bootstrap | `storage.md`. Supervisor reactions to StorageService state link to `processing-lifecycle.md`. | Coverage verified; authority cutover pending |
-| §6, Retained persistence model and cache | `storage.md`. Shared materiality vocabulary links to `domain-model.md`. | Coverage verified; authority cutover pending |
-| §7, Block materialization and PP boundary | `storage.md` owns materialization transactions, schema invariants, and cache publication; `block-processing.md` owns when BlockProcessor requests those operations and reacts to PP sealing. | Coverage verified; authority cutover pending |
-| §8, BlockProcessor, orphan topology, dependency resolution | `block-processing.md`. Cross-worker recovery dispositions link to `processing-lifecycle.md`. | Coverage verified; authority cutover pending |
-| §9, VSPC changes, readiness, history, and atomic coloring | `vspc-processing.md` owns sequencing and readiness; `storage.md` owns the atomic coloring transaction; shared VSPC value definitions go to `domain-model.md`. | Coverage verified; authority cutover pending |
-| §10, ResyncEngine preparation and common pump | `processing-lifecycle.md`. Node RPC normalization used by the pump links to `node-service.md`; component-local admission behavior links to `block-processing.md` and `vspc-processing.md`. | Coverage verified; authority cutover pending |
-| §11, Catchup, overlap, Live, and late transport messages | `processing-lifecycle.md` owns phase transitions, coverage admission, timing, and global Live entry. `block-processing.md` and `vspc-processing.md` own their local phase behavior. `node-service.md` owns routing and transport-message handling. | Coverage verified; authority cutover pending |
-| §12, Teardown and delivery/failure semantics | `processing-lifecycle.md` owns teardown order, barriers, owner-directed faults, and session completion. Component-specific draining duties remain in the relevant component document. | Coverage verified; authority cutover pending |
-| §13, In-process API and graph observer feed | `api.md`. Producer-side observer publication guarantees remain in the relevant processor document and are referenced by `api.md`. | Coverage verified; authority cutover pending |
-| §14, API snapshot, revision, delta, SSE, and ETags | `api.md`. | Coverage verified; authority cutover pending |
-| §15, Reset and recovery-time API availability | `api.md` owns Reset and publication behavior; `processing-lifecycle.md` owns when lifecycle milestones trigger those API operations. | Coverage verified; authority cutover pending |
-| §16, DAA navigation and window API | `api.md`. Storage query semantics needed by these endpoints remain in `storage.md`. | Coverage verified; authority cutover pending |
-| §17, Web behavior | `web.md`. Wire contracts consumed by the browser remain in `api.md`. | Coverage verified; authority cutover pending |
-| §18, Resource isolation and scalability | `overview.md` owns the system-wide isolation model. Concrete component budgets and saturation behavior remain with each component; API budgets remain in `api.md`. | Coverage verified; authority cutover pending |
-| §19, Tests and verification obligations | `verification.md`, organized by the architecture owner being verified. Exact unresolved test-matrix breadth remains a deferred decision rather than a duplicate contract. | Coverage verified; authority cutover pending |
-| §20, Remaining implementation decisions and v2.1 boundary | Unresolved v2 architecture goes to `../decisions/open.md`; constrained implementation choices go to `../decisions/deferred.md`; execution order goes to `../implementation/sequence.md`; work outside v2 remains in `../future-work.md`. | Coverage verified; authority cutover pending |
-| §21, Rejected designs | `../decisions/rejected.md` or `../decisions/superseded.md`, according to whether the design was never accepted or was replaced after acceptance. Any current replacement behavior remains in its focused architecture owner. | Coverage verified; authority cutover pending |
+| §0, Reading rules and scope | `README.md` for architecture authority and navigation; `../README.md` for repository-wide document classes. Scope constraints on future work go to `../future-work.md`. | Verified and cut over |
+| §1, System shape and ownership | `overview.md`. Shared type names introduced only as vocabulary go to `domain-model.md`. | Verified and cut over |
+| §2, Shared identities and graph vocabulary | `domain-model.md`. Persistence-specific enforcement and schema representation go to `storage.md`. | Verified and cut over |
+| §3, Lifecycle, intent, commands, and channels | `processing-lifecycle.md` for lifecycle, command direction, channel semantics, fault classification, retries, and milestones. Reusable identity/value definitions go to `domain-model.md`; service-specific reconnect rules go to `node-service.md` or `storage.md`. | Verified and cut over |
+| §4, NodeService and validated RPC | `node-service.md`. | Verified and cut over |
+| §5, StorageService lifecycle and DB bootstrap | `storage.md`. Supervisor reactions to StorageService state link to `processing-lifecycle.md`. | Verified and cut over |
+| §6, Retained persistence model and cache | `storage.md`. Shared materiality vocabulary links to `domain-model.md`. | Verified and cut over |
+| §7, Block materialization and PP boundary | `storage.md` owns materialization transactions, schema invariants, and cache publication; `block-processing.md` owns when BlockProcessor requests those operations and reacts to PP sealing. | Verified and cut over |
+| §8, BlockProcessor, orphan topology, dependency resolution | `block-processing.md`. Cross-worker recovery dispositions link to `processing-lifecycle.md`. | Verified and cut over |
+| §9, VSPC changes, readiness, history, and atomic coloring | `vspc-processing.md` owns sequencing and readiness; `storage.md` owns the atomic coloring transaction; shared VSPC value definitions go to `domain-model.md`. | Verified and cut over |
+| §10, ResyncEngine preparation and common pump | `processing-lifecycle.md`. Node RPC normalization used by the pump links to `node-service.md`; component-local admission behavior links to `block-processing.md` and `vspc-processing.md`. | Verified and cut over |
+| §11, Catchup, overlap, Live, and late transport messages | `processing-lifecycle.md` owns phase transitions, coverage admission, timing, and global Live entry. `block-processing.md` and `vspc-processing.md` own their local phase behavior. `node-service.md` owns routing and transport-message handling. | Verified and cut over |
+| §12, Teardown and delivery/failure semantics | `processing-lifecycle.md` owns teardown order, barriers, owner-directed faults, and session completion. Component-specific draining duties remain in the relevant component document. | Verified and cut over |
+| §13, In-process API and graph observer feed | `api.md`. Producer-side observer publication guarantees remain in the relevant processor document and are referenced by `api.md`. | Verified and cut over |
+| §14, API snapshot, revision, delta, SSE, and ETags | `api.md`. | Verified and cut over |
+| §15, Reset and recovery-time API availability | `api.md` owns Reset and publication behavior; `processing-lifecycle.md` owns when lifecycle milestones trigger those API operations. | Verified and cut over |
+| §16, DAA navigation and window API | `api.md`. Storage query semantics needed by these endpoints remain in `storage.md`. | Verified and cut over |
+| §17, Web behavior | `web.md`. Wire contracts consumed by the browser remain in `api.md`. | Verified and cut over |
+| §18, Resource isolation and scalability | `overview.md` owns the system-wide isolation model. Concrete component budgets and saturation behavior remain with each component; API budgets remain in `api.md`. | Verified and cut over |
+| §19, Tests and verification obligations | `verification.md`, organized by the architecture owner being verified. Exact unresolved test-matrix breadth remains a deferred decision rather than a duplicate contract. | Verified and cut over |
+| §20, Remaining implementation decisions and v2.1 boundary | Unresolved v2 architecture goes to `../decisions/open.md`; constrained implementation choices go to `../decisions/deferred.md`; execution order goes to `../implementation-sequence.md`; work outside v2 remains in `../future-work.md`. | Verified and cut over |
+| §21, Rejected designs | `../decisions/rejected.md` or `../decisions/superseded.md`, according to whether the design was never accepted or was replaced after acceptance. Any current replacement behavior remains in its focused architecture owner. | Verified and cut over |
 
 ## Coverage verification
 
@@ -135,23 +132,23 @@ choice, v2.1 boundary, and rejected or superseded design has an owner outside
 the handoff. Local links and heading anchors in the current architecture and
 decision documents have also been checked.
 
-This verification completes content dispatch only. The focused documents do
-not become authoritative until the explicit cutover below; their migration
-banners and the handoff locations remain unchanged until then.
+Two independent losslessness reviews checked the reorganization against its
+pre-extraction base. Their findings were resolved before cutover, including
+the final `Inconsistent` database initialization clarification.
 
-## Cutover conditions
+## Cutover record
 
-The focused architecture becomes authoritative only after all of these are
-true:
+The authority cutover completed after confirming that:
 
-1. Every row in the dispatch map has been applied.
-2. Each dispatched section has been checked against later accepted changes.
-3. No focused document says that the handoff prevails on conflict.
-4. No current contract exists only in the handoff.
-5. Cross-references, `AGENTS.md`, and the repository README identify the new
-   owners consistently.
-6. A final review confirms that the reorganization changed document ownership
-   without changing accepted behavior.
+1. every row in the coverage map was applied;
+2. every dispatched section was checked against later accepted changes;
+3. no focused document gives a handoff precedence on conflict;
+4. no current contract exists only in a handoff;
+5. repository cross-references and collaboration instructions identify the
+   focused owners consistently; and
+6. independent review confirmed that the reorganization preserved accepted
+   behavior and ownership.
 
-After that review, one explicit cutover change will make the focused files the
-normative architecture and move the handoffs into `docs/history/handoffs/`.
+The focused files are therefore the normative architecture. The superseded
+handoffs reside under [`docs/history/handoffs/`](../history/handoffs/) as
+non-normative provenance.

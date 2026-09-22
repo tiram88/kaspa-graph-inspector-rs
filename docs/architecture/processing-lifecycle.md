@@ -1,8 +1,5 @@
 # Processing lifecycle and recovery
 
-> Focused extraction; the current consolidated contract is
-> [handoff-2026-09-20.md](handoff-2026-09-20.md), which prevails on conflicts.
-
 ## Scope and ownership
 
 This document owns Supervisor recovery intent, cross-worker commands and

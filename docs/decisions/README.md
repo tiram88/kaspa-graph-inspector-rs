@@ -25,6 +25,6 @@ the owning architecture document. Rejected and superseded entries prevent
 accidental reintroduction; they do not compete with the current owner. Open and
 deferred entries never weaken settled constraints.
 
-During the documentation migration, the authority rules in `AGENTS.md` and the
-20 September consolidated handoff continue to apply until the explicit
-architecture cutover.
+The authority and reading order in [`AGENTS.md`](../../AGENTS.md) apply. The
+focused architecture owner named by an entry is the current normative source;
+historical handoffs do not participate in precedence.

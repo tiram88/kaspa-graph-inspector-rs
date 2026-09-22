@@ -1,9 +1,5 @@
 # VSPC processing
 
-> Focused extraction; during the documentation reorganization, the current
-> consolidated contract remains
-> [handoff-2026-09-20.md](handoff-2026-09-20.md), which prevails on conflicts.
-
 ## Scope and ownership
 
 This document owns VspcProcessor sequencing, readiness, pending indexes,
