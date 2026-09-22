@@ -143,11 +143,22 @@ Storage reconciliation obtains:
 - database PP at `(level = 1, slot = 0)`;
 - `db_pp_blue_score` from metadata;
 - committed materialized VSPC sink derived as the maximum-ID materialized
-  block with `is_in_vspc = true`.
+  block with `is_in_vspc = true`, including its ID, hash, and stored DAA
+  score.
 
 An Empty state is genuinely fully empty and requests a distinct Rebuild run
 because PP, score, and sink are absent. A valid schema with inconsistent
 processing contents also requests Rebuild but is not treated as Empty.
+
+ResyncEngine uses the run's exact `Arc<ValidatedRpcClient>` to call
+`GetBlock(sink_hash, include_transactions = false)`. It requires the returned
+header hash to equal the requested sink hash and its DAA score to equal the
+stored sink DAA score. It then constructs `MaterializedSyncAnchor` from the
+stored ID and hash plus the header's blue work and blue score. A header-only
+node block is sufficient because no body or transactions are needed. At the
+pinned rusty-kaspa revision, successful GetBlock GhostDAG enrichment also
+establishes the recognition required to use the sink as a GetBlocks
+`low_hash`.
 
 Resync requirements:
 
@@ -160,8 +171,14 @@ Resync requirements:
        db_pp_blue_score + anticone_finalization_depth
    ```
 
-Failure to reconcile reports `Require(Rebuild)` to Supervisor. Rebuild occurs
-as a separate run; there is no internal Auto fallback.
+A missing or inconsistent stored sink, a definitive absent/invalid response
+from the node, a stored/returned DAA-score mismatch, or another failed
+reconciliation check reports `Require(Rebuild)` to Supervisor. A transport
+failure, cancellation, connection loss, or validated-client loss is instead a
+session fault/retry and does not prove that Rebuild is required. A returned
+hash other than the requested sink is a malformed RPC response and a
+protocol/session fault. Rebuild occurs as a separate run; there is no internal
+Auto fallback.
 
 ### Rebuild preparation
 

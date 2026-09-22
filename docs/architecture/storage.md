@@ -166,8 +166,12 @@ The materialization transaction validates referenced identities and embeds the
 coordinates needed by visualization. Outside-boundary parents use `(0, 0)`.
 The API filters `parent_level > 0` for visible DAG edges.
 
-Blue score is not stored for every block merely to recover the DB PP boundary;
-`db_pp_blue_score` is metadata. The DB PP itself is fetched by `(1, 0)`.
+Per-block blue work and blue score are not stored. During Resync, storage
+returns the committed materialized VSPC sink's ID, hash, and DAA score;
+ResyncEngine validates an exact no-transactions GetBlock response and obtains
+the sink's blue work and blue score from its header. `db_pp_blue_score` remains
+the only persisted blue-score metadata. The DB PP itself is fetched by
+`(1, 0)`.
 `levels.daa_score = i64::MAX` means no VSPC member; new levels start with
 this sentinel. At most one current VSPC member occupies a level, and a reorg
 can leave that level empty. Valid DAA queries satisfy `0 <= q < i64::MAX`;
