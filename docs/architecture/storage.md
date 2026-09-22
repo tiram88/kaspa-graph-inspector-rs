@@ -131,7 +131,7 @@ An existing database is never silently rebound to the CLI network or reset.
 `--clear-db` requests processing-data Rebuild under the existing compatible
 network binding. A persistent destructive `--reinitialize-db --yes` startup
 option is forbidden; a separate explicit administrative reset remains
-deferred.
+open in the [decision register](../decisions/open.md).
 
 StorageService acquires a dedicated PostgreSQL session advisory lock before
 initialization, migration, or validation and holds it throughout the

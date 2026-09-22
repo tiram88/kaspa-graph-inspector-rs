@@ -17,7 +17,7 @@ pinned to the chosen rusty-kaspa revision and fail visibly when that revision
 changes incompatibly.
 
 These obligations are a required baseline. The breadth of an exhaustive parity
-matrix remains open in [open-questions.md](../open-questions.md).
+matrix remains deferred in [deferred.md](../decisions/deferred.md).
 
 ## Node and upstream RPC fixtures
 

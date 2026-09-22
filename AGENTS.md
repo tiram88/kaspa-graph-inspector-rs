@@ -9,8 +9,10 @@ Before changing or reviewing this repository, read in this order:
 1. This `AGENTS.md`.
 2. `docs/architecture/handoff-2026-09-20.md` (the current consolidated contract).
 3. `docs/architecture/overview.md` and every focused architecture document relevant to the work.
-4. Accepted ADRs in `docs/decisions/`.
-5. `docs/open-questions.md` when the work touches an unresolved choice.
+4. `docs/decisions/README.md`, the settled, rejected, and superseded
+   registers, and any accepted standalone ADRs in `docs/decisions/`.
+5. `docs/decisions/open.md` or `docs/decisions/deferred.md` when the work
+   touches an unresolved requirement or implementation choice.
 6. `docs/implementation-status.md` and relevant reports in `docs/reviews/` for non-normative project state.
 
 `docs/architecture/handoff-2026-09-17.md` is the verbatim source handoff for the original bootstrap. Consult it for provenance, but its superseded wording is not the current contract. Focused documents were extracted from that bootstrap and cover their named components; the consolidated handoff contains broader cross-component and API contracts. Where they differ, the later accepted decisions recorded in `handoff-2026-09-20.md` control; flag any ambiguity rather than blending conflicting rules.
@@ -30,7 +32,7 @@ Normative precedence is:
 reports. Audit files are non-normative: they do not participate in
 architecture precedence and must not be used as implementation or review
 contracts. Trace every accepted audit outcome to the current architecture,
-an accepted ADR, or `docs/open-questions.md` as appropriate.
+an accepted ADR, or the applicable decision-status register as appropriate.
 
 Version control tracks the complete `docs/audits/` directory for historical
 provenance. Tracking an audit does not give it normative authority.
@@ -70,7 +72,10 @@ If repository evidence conflicts with accepted architecture, flag the conflict. 
 
 ## Architecture role
 
-The Architecture role owns normative architecture documents and ADRs. It preserves the distinction between architectural contracts and implementation details, records accepted changes durably, and keeps `docs/open-questions.md` limited to genuinely unresolved or deliberately deferred matters.
+The Architecture role owns normative architecture documents and ADRs. It
+preserves the distinction between architectural contracts and implementation
+details, records accepted changes durably, and keeps the open and deferred
+decision registers limited to their stated status.
 
 The Architecture role does not implement production code unless explicitly asked.
 
@@ -89,7 +94,8 @@ Review findings belong in `docs/reviews/` when a durable report is requested. Fi
 ## Scope rules
 
 - Statements marked settled in the architecture documents are accepted constraints.
-- Rejected or superseded designs in `docs/decisions/README.md` must not be reintroduced implicitly.
+- Rejected or superseded designs in `docs/decisions/rejected.md` and
+  `docs/decisions/superseded.md` must not be reintroduced implicitly.
 - Open implementation choices must preserve all settled contracts.
 - KGI v2.1 candidates in `docs/future-work.md` are outside the KGI v2 implementation unless explicitly promoted through an architecture decision.
 - Production work must not begin until the architecture bootstrap has been reviewed and committed as a stable baseline.

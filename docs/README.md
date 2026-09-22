@@ -28,8 +28,7 @@ dispatched and checked.
 | Area | Purpose | Current authority |
 |---|---|---|
 | `architecture/` | Current system contracts and the active handoff | Normative according to `AGENTS.md` |
-| `decisions/` | Accepted, rejected, and superseded architecture choices | Accepted decisions are normative amendments |
-| `open-questions.md` | Unresolved or deliberately deferred KGI v2 matters | Non-normative constraints on future decisions |
+| `decisions/` | Settled, open, deferred, rejected, and superseded decision registers plus any standalone ADRs | Accepted ADRs and rejected/superseded status constrain work; current behavior remains in the focused owner |
 | `future-work.md` | Work explicitly outside KGI v2 | Non-normative |
 | `implementation-sequence.md` | Planned implementation order | Non-normative |
 | `implementation-status.md` | Current implementation state | Non-normative |

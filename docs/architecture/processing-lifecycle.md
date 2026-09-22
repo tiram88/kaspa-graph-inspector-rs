@@ -304,7 +304,7 @@ Auto fallback.
 
 The special recovery behavior for an initialized database whose retained
 pruning point is Genesis remains an open requirement; see
-[open-questions.md](../open-questions.md). This section does not infer a policy
+[open.md](../decisions/open.md). This section does not infer a policy
 beyond the settled Genesis/ORIGIN representation.
 
 ### Rebuild preparation

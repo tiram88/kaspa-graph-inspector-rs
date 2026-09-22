@@ -1,76 +1,25 @@
-# Architecture decisions
+# Architecture decision register
 
-Accepted ADRs belong in this directory. ADRs are normative and may amend the focused architecture documents only when the change is explicit.
+This directory records KGI v2 decisions by current status. A status file is a
+register, not a second copy of the architecture. Complete current behavior
+belongs in the focused document named by the entry.
 
-The following rejected and superseded designs are already settled and must not be reopened implicitly.
+| File | Meaning |
+|---|---|
+| [settled.md](settled.md) | Accepted outcomes and their current architecture owners. |
+| [open.md](open.md) | Requirements that still need an architecture decision. |
+| [deferred.md](deferred.md) | Constrained implementation choices intentionally left to implementation work. |
+| [rejected.md](rejected.md) | Proposals considered and never accepted. |
+| [superseded.md](superseded.md) | Former designs replaced by a later accepted design. |
 
-## Explicitly rejected or superseded designs
+`docs/future-work.md` remains separate: it contains work outside KGI v2 rather
+than unresolved v2 decisions.
 
-- Subscribe only after the whole initial scan and then repair solely from final
-  VSPC: the architecture now uses deliberate Catchup overlap.
-- Claim that recursive dependency loading in Go KGI is depth-limited: false;
-  `ProcessBlockAndDependencies` recursively covers arbitrary depth.
-- Placeholder block rows at level 0/1 and later promotion: replaced by
-  permanent outside-boundary identities plus materialized retained blocks.
-- Waiters in the committed block index: unnecessary; BlockProcessor receives
-  the ID from commit/dedup and publishes `PersistedBlock` asynchronously.
-- One monolithic worker for blocks and VSPC: split processors with immediate
-  hash-to-ID communication.
-- Ordering VSPC solely by arrival: unsafe.
-- Rewind/replay of recently processed VSPC: rejected; use chronological
-  buffering, chain continuity, and resync.
-- Treating row existence as materiality: replaced by enforced
-  `BoundaryMaterialized` invariant.
-- Explicit notification epochs: impossible to assign reliably and unnecessary
-  with Begin/Catchup gates and lower bounds.
-- Large sink-anticone capacity/window calculation and a fixed X/Y page rule
-  for Catchup proximity/overlap: replaced by a rolling RPC sink marker
-  established by the gapless VSPC pump and a page-aware DAA threshold. The
-  global-maximum-position, normalized-length `< 3`, and empty-VSPC conditions
-  remain independent fallbacks. The network-scaled page cap after ordinary
-  Live eligibility is a body-tip coverage budget, not a Catchup trigger.
-- Local or adjacent GetBlocks order decrease as a Catchup trigger: rejected.
-  Only the position of the page's global maximum is relevant to the accepted
-  order-based fallback.
-- Dedicated recovery or a separate completeness gate for a GetBlocks response
-  assembled across changing virtual views: rejected. The rolling sink is the
-  normal Catchup path; a material omission exposed during strict pre-Catchup
-  processing requests `Require(Resync)` through the existing fault path.
-- Deriving a destination from a removed-only VSPC change: rejected. Pinned
-  upstream selected-sink monotonicity makes the shape impossible. A raw
-  notification disables routing and requires Resync. A synthetic response
-  aborts the whole recovery attempt without cursor advancement: its first
-  three occurrences per validated RPC generation each produce typed Retry,
-  and the fourth is Fatal. A new RPC generation or `EnteredLive` resets the
-  counter.
-- Admitting a wholly empty upstream VirtualChainChanged notification to
-  VspcProcessor: rejected. NodeService discards this valid no-op before its
-  bounded send; it earns no overlap credit and is distinct from an empty VSPC
-  V2 page.
-- Enabling local notification routing before both remote subscriptions have
-  started: routing remains Disabled through activation, dropping callbacks
-  until both starts succeed.
-- Blanket rule that only ResyncEngine may request Rebuild: a nonmaterialized
-  VSPC chain member or resolver-confirmed unavailable dependency requests it
-  directly.
-- No-unresolved-orphans condition for Live: unnecessary.
-- Entering Live from overlap flags alone: superseded by the fixed body-tip
-  coverage invariant. ResyncEngine stops producing synthetic VSPC changes at
-  the ordinary eligibility boundary. An acknowledged VSPC freeze/barrier and
-  special coverage checkpoint are rejected. VspcProcessor receives its
-  existing Live command at that boundary while BlockProcessor remains in
-  Catchup; no additional VSPC phase or synthetic-stream terminal marker is
-  introduced.
-- `Auto` recovery mode: removed; Resync failure explicitly requires Rebuild.
-- Escalating an arbitrary number of failed Resync attempts to Rebuild:
-  rejected. Recovery strength follows typed evidence, not retry count.
-- Immediate or unbounded-rate service/recovery retry: rejected. NodeService,
-  StorageService, and whole-attempt recovery use the settled capped jittered
-  schedules; permanent incompatibility is terminal `Rejected`.
-- Transparently retrying an ambiguous database commit: rejected. Only definite
-  PostgreSQL `40001`/`40P01` rollbacks receive the bounded complete-transaction
-  retry policy.
-- Dedicated persisted VSPC checkpoint/sink table: derived from block state.
-- Dedicated persisted PP identity by CompactId: DB PP is `(1, 0)`.
-- `ReadyAddedBlock`: unnecessary; Storage loads merge sets transactionally.
-- `ProcessingResources` wrapper: unnecessary.
+When a decision changes status, move its entry in the same change that updates
+the owning architecture document. Rejected and superseded entries prevent
+accidental reintroduction; they do not compete with the current owner. Open and
+deferred entries never weaken settled constraints.
+
+During the documentation migration, the authority rules in `AGENTS.md` and the
+20 September consolidated handoff continue to apply until the explicit
+architecture cutover.
