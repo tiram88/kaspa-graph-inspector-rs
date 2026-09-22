@@ -42,7 +42,8 @@ concrete layout, SQL types and libraries, capacities,
 fairness mechanics, HTTP limits, `MAX_WINDOW_DEPTH`, API wire format and URLs,
 adaptive Web delay, and the precise historical-read reset mechanism open.
 Choose and document these with tests while preserving settled behavior.
-Fault classification and retry/backoff defaults are fixed by the handoff;
+Fault classification and retry/backoff defaults are fixed by the
+[processing lifecycle contract](../architecture/processing-lifecycle.md);
 implementation may choose module placement, error-library syntax, and
 configuration plumbing without changing them. Benchmark the wire format
 before fixing the server/Web contract. Pin and test any critical
