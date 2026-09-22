@@ -72,6 +72,9 @@ Disabled | Enabled | Retired
 - Enabled routes with nonblocking bounded sends.
 - A full destination channel means notification loss: disable both streams and
   raise a recovery fault.
+- An Enabled `BlockAdded` without `block.verbose_data` cannot provide the
+  selected parent and merge sets required for materialization and reports
+  `Require(Resync)`.
 - Retired never routes again.
 
 The subscription state belongs to `ValidatedRpcClient` and cannot outlive its

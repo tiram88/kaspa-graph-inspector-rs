@@ -74,6 +74,9 @@ Notification gating:
   received notifications are discarded immediately rather than accumulating
   for later ambiguity.
 
+A `BlockAdded` without verbose data lacks the selected parent and blue/red
+merge sets required for materialization and requires Resync.
+
 ResyncEngine, rather than BlockProcessor, owns the exact Catchup-only set of
 synthetic hashes successfully accepted by the block channel. BlockProcessor's
 source-bit map remains responsible for overlap. GetBlocks hashes can repeat
