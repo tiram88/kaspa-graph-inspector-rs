@@ -88,11 +88,13 @@ struct KgiConsensusParams {
 ```
 
 Add copied parameters only when KGI behavior actually depends on them.
-After validating the exact `NetworkId`, obtain these values from the pinned
-rusty-kaspa `Params` for that network through `bps()`,
+After validating the exact `NetworkId`, obtain these values from rusty-kaspa
+`Params` for that network through `bps()`,
 `mergeset_size_limit()`, and `anticone_finalization_depth()`. Reject unsupported
 network suffixes before constructing `Params`; do not reproduce the
-merge-set-limit formula inside KGI.
+merge-set-limit formula inside KGI. The
+[PUAR](verification.md#pinned-upstream-assumption-review-policy) checks the
+parameter values used by the reference revision.
 
 ### Genesis discovery
 
@@ -112,12 +114,13 @@ GetBlocks {
 }
 ```
 
-At the pinned rusty-kaspa revision, `None` selects the node's configured
-Genesis as the low hash and the first returned `block_hashes` member is that
-Genesis. Validation requires a nonempty hash vector and an empty block vector,
-then copies the first hash into `ValidatedNodeInfo.genesis_hash`. Transport
-failure or malformed output fails that validation attempt; NodeService never
-guesses or substitutes a locally known Genesis hash.
+KGI relies on `None` selecting the node's configured Genesis as the low hash
+and the first returned `block_hashes` member being that Genesis. The PUAR
+checks this upstream assumption against the reference revision. Validation
+requires a nonempty hash vector and an empty block vector, then copies the first
+hash into `ValidatedNodeInfo.genesis_hash`. Transport failure or malformed
+output fails that validation attempt; NodeService never guesses or substitutes
+a locally known Genesis hash.
 
 This discovery call is deliberately distinct from `get_blocks` normalization
 below. It neither constructs a synchronization page nor applies the explicit
@@ -215,12 +218,13 @@ DependencyResolver uses individual `GetBlock` calls for missing dependencies
 without holding database transactions.
 For `GetVirtualChainFromBlockV2`, request
 `min_confirmation_count = None` and
-`data_verbosity_level = Some(RpcDataVerbosityLevel::None)`. Rusty-kaspa master
-`c338d495` preserves a minimal acceptance-data envelope and an advancing
-`added.last()` cursor for this combination. The RPC's exact added chain-path
-batch size is `10 * mergeset_size_limit`. This limit bounds `added`, while the
-complete `removed` suffix is not batch-limited. The same numeric budget bounds
-merged blocks loaded for acceptance data; the resulting acceptance-data
-length may shorten `added`, but only to a complete prefix. The pinned evidence
-requirement is defined in
-[verification.md](verification.md#node-and-upstream-rpc-fixtures).
+`data_verbosity_level = Some(RpcDataVerbosityLevel::None)`. KGI relies on this
+combination preserving a minimal acceptance-data envelope and an advancing
+`added.last()` cursor. The RPC's exact added chain-path batch size is
+`10 * mergeset_size_limit`. This limit bounds `added`, while the complete
+`removed` suffix is not batch-limited. The same numeric budget bounds merged
+blocks loaded for acceptance data; the resulting acceptance-data length may
+shorten `added`, but only to a complete prefix. The PUAR checks these upstream
+assumptions against the reference revision; KGI-owned request construction and
+response handling are covered by
+[verification.md](verification.md#nodeservice-and-rpc-behavior).

@@ -2,21 +2,91 @@
 
 ## Scope and evidence rules
 
-This document owns the minimum executable evidence required for the KGI v2
-architecture. It does not redefine component behavior: each requirement below
-links to the focused contract whose observable result it verifies.
+This document owns the minimum evidence required for the KGI v2 architecture.
+It does not redefine component behavior: each requirement below links to the
+focused contract whose observable result it verifies.
 
-Use the narrowest useful test level, but retain integration coverage wherever
-the result depends on PostgreSQL, rusty-kaspa RPC behavior, browser graph
+Use the narrowest useful test level for behavior owned by KGI, but retain
+integration coverage wherever the result depends on PostgreSQL, browser graph
 behavior, or a multi-worker ordering boundary. Inject clocks and jitter sources
-when wall-clock behavior is under test. Critical upstream assumptions must be
-pinned to the chosen rusty-kaspa revision and fail visibly when that revision
-changes incompatibly.
+when wall-clock behavior is under test. Upstream correctness assumptions use
+the source-analysis policy below rather than executable fixtures created only
+to prove rusty-kaspa behavior.
 
 These obligations are a required baseline. The breadth of an exhaustive parity
 matrix remains deferred in [deferred.md](../decisions/deferred.md).
 
-## Node and upstream RPC fixtures
+## Pinned Upstream Assumption Review policy
+
+The **Pinned Upstream Assumption Review**, abbreviated **PUAR**, is the specific
+source analysis of KGI's upstream correctness assumptions against one exact
+rusty-kaspa commit. The current pinned reference revision is:
+
+```text
+c338d495bec29e4dc8b5149f99e8db6fa916ed4a
+```
+
+This pin makes the architecture analysis reproducible. It identifies the
+rusty-kaspa source used to assess KGI's assumptions; it is not a runtime
+version restriction. KGI may connect to other node versions after ordinary
+validation, but the PUAR provides no correctness claim for those versions or
+for custom builds.
+
+The PUAR checklist is:
+
+1. `GetBlocks(None, false, false)` returns the configured Genesis hash first
+   and returns no blocks.
+2. Header-only `GetBlock` supplies the required GhostDAG data and establishes
+   that the returned block is recognized as a GetBlocks low hash.
+3. The `L + 1` GetBlocks core budget, consensus-topological ordering, page
+   construction, global-maximum fallback premise, and the `< 3` normalized
+   length sink-reaching premise match the Catchup design.
+4. Body-tip storage is updated before the corresponding BlockAdded notification
+   is emitted, and `GetBlockDagInfo.tip_hashes` comes from that body-tip state.
+5. Virtual selected-sink behavior preserves the documented removed/added
+   ordering, excludes removed-only changes, can emit the documented fully
+   empty no-op, and never places Genesis in `added` or `removed`.
+6. BlockAdded duplicate and verbose-data behavior matches NodeService and
+   BlockProcessor assumptions, including the enrichment-failure form without
+   verbose data.
+7. Every supported `NetworkId` resolves to the exact `bps`,
+   `mergeset_size_limit`, and `anticone_finalization_depth` values used by KGI.
+8. VSPC V2 with `min_confirmation_count = None` and
+   `RpcDataVerbosityLevel::None` preserves the documented batching, complete
+   removed suffix, minimal acceptance-data envelope, complete-prefix
+   shortening, and advancing cursor behavior.
+
+For each item, inspect the committed source at the full SHA and report one of:
+
+```text
+Confirmed
+Not confirmed
+Contradicted
+```
+
+Each result contains a concise conclusion, relevant rusty-kaspa paths and
+symbols, and any material KGI impact or limitation. A PUAR is evidence about
+the reference revision rather than proof across node versions. No fixture or
+test is required solely to establish an upstream checklist item. Executable
+tests remain required for KGI's handling of valid input and observable
+violations.
+
+The instruction **Run the Pinned Upstream Assumption Review** runs the complete
+checklist against the current reference revision. **Run a PUAR against
+rusty-kaspa `<full-sha>`** selects an explicit revision. The resulting dated,
+non-normative report belongs in:
+
+```text
+docs/reviews/YYYY-MM-DD-rusty-kaspa-<short-sha>-assumptions.md
+```
+
+A report does not change the reference pin or architecture automatically.
+`Not confirmed` or `Contradicted` is reported to Architecture before dependent
+implementation proceeds. Changing the reference revision requires a new PUAR;
+otherwise repeat the review only when a compatibility problem or relevant
+upstream change gives a concrete reason.
+
+## NodeService and RPC behavior
 
 Verify the [NodeService contract](node-service.md#nodeservice--settled) and
 [RPC normalization](node-service.md#rpc-normalization) with:
@@ -24,22 +94,17 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
 1. GetBlocks fixtures for the inclusive low hash, unequal hash/block vector
    lengths, hash/block disagreement, duplicates, and a valid response that
    normalizes to zero blocks.
-2. Raw Genesis discovery with `low_hash = None`, blocks and transactions
-   disabled: pin the first returned hash to the node's configured Genesis,
-   require a nonempty hash vector and empty block vector, and reject malformed
-   responses without substituting a local Genesis constant.
-3. A pinned rusty-kaspa fixture in which a side-block task emits a fully empty
-   `VirtualChainChanged`; assert that NodeService drops it before bounded
-   delivery with no overlap credit, processor-capacity use, or recovery.
-   Distinguish it from an empty VSPC V2 RPC page.
-4. A pinned fixture for
-   `min_confirmation_count = None` and
-   `data_verbosity_level = Some(RpcDataVerbosityLevel::None)` that checks the
-   exact `10 * mergeset_size_limit` added chain-path batch size, the complete
-   `removed` suffix that this batch size does not limit, the minimal
-   acceptance-data envelope, any further shortening of `added` only to a
-   complete prefix, and an advancing `added.last()` cursor for every nonempty
-   response.
+2. Genesis discovery request construction with `low_hash = None`, blocks and
+   transactions disabled, plus response validation for a nonempty hash vector,
+   empty block vector, transport failure, and malformed output. Given a valid
+   response, NodeService uses its first hash without substituting a local
+   Genesis constant.
+3. Given a fully empty `VirtualChainChanged`, NodeService drops it before
+   bounded delivery with no overlap credit, processor-capacity use, or
+   recovery. Distinguish it from an empty VSPC V2 RPC page.
+4. VSPC V2 request construction uses `min_confirmation_count = None` and
+   `data_verbosity_level = Some(RpcDataVerbosityLevel::None)`. Mocked valid
+   complete-prefix and advancing-cursor responses exercise KGI's pump behavior.
 5. Mocked removed-only notification and VSPC V2 responses. Assert the
    source-specific dispositions: a notification requires Resync; a synthetic
    page does not advance its cursor and uses the bounded whole-attempt Retry
@@ -165,9 +230,9 @@ together. Required cases are:
    input and makes notifications authoritative for the rest of the session.
 4. Notification-driven VSPC sink advancement and notification changes held in
    pre-resolution readiness by unfinished block dependencies.
-5. A fixed body-tip snapshot and one batch of its strictly materialized subset.
-   Pin the upstream premises that tips come from the body-tip store and that
-   its update commits before BlockAdded emission.
+5. A supplied fixed body-tip snapshot and one batch of its strictly
+   materialized subset. The PUAR owns the upstream source premises behind that
+   input.
 6. `T ⊆ M ∪ catchup_sent` with an already materialized side tip, a dropped
    activation callback outside the then-selected past, a tip admitted on the
    final permitted page, and a tip that remains uncovered.

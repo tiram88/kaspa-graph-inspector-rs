@@ -283,10 +283,11 @@ ResyncEngine uses the run's exact `Arc<ValidatedRpcClient>` to call
 header hash to equal the requested sink hash and its DAA score to equal the
 stored sink DAA score. It then constructs `MaterializedSyncAnchor` from the
 stored ID and hash plus the header's blue work and blue score. A header-only
-node block is sufficient because no body or transactions are needed. At the
-pinned rusty-kaspa revision, successful GetBlock GhostDAG enrichment also
-establishes the recognition required to use the sink as a GetBlocks
-`low_hash`.
+node block is sufficient because no body or transactions are needed. KGI relies
+on successful GetBlock GhostDAG enrichment also establishing the recognition
+required to use the sink as a GetBlocks `low_hash`; the
+[PUAR](verification.md#pinned-upstream-assumption-review-policy) checks that
+upstream assumption against the reference revision.
 
 Resync requirements:
 
@@ -574,10 +575,11 @@ state.
 Capture a fixed `GetBlockDagInfo.tip_hashes` set `T` after subscriptions are
 Enabled and determine in one batch its strictly materialized subset `M`. Only
 the tip vector is the coverage snapshot; other response fields are not treated
-as one atomic combined snapshot. Do not refresh `T`. The pinned upstream
-ordering commits each body-tip-store update before emitting its BlockAdded
+as one atomic combined snapshot. Do not refresh `T`. KGI relies on upstream
+ordering that commits each body-tip-store update before emitting its BlockAdded
 notification, so blocks committed after the snapshot are protected by the
-active subscription.
+active subscription. The PUAR checks this premise against the reference
+revision.
 
 Run at least one additional block-only GetBlocks request using the block scan's
 existing cursor. Preserve full-page dispatch and the Catchup-only dedup set.
@@ -594,9 +596,9 @@ With merge-set limit `L`, cap additional fully dispatched responses at:
 ```
 
 The resulting current caps are 2, 3, and 3 pages at 1, 10, and 32 BPS, using
-the pinned rusty-kaspa merge-set limits 180, 248, and 512. Empty and fully
-filtered responses consume budget. The cap is operational and does not claim
-a mathematical DAA advance per page.
+rusty-kaspa merge-set limits 180, 248, and 512 for the reference revision.
+Empty and fully filtered responses consume budget. The cap is operational and
+does not claim a mathematical DAA advance per page.
 
 After each complete page, Live admission requires:
 

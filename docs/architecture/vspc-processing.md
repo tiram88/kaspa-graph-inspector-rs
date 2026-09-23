@@ -32,7 +32,8 @@ store `VspcChange` directly; there is no `PendingVspcChange` wrapper or
 `ReadyAddedBlock`.
 
 Every admitted nonempty change has a nonempty `added` vector. A removed-only
-change is impossible under pinned upstream selected-sink monotonicity and has
+change is impossible under the selected-sink monotonicity assumption reviewed
+by the [PUAR](verification.md#pinned-upstream-assumption-review-policy) and has
 no invented fallback destination. NodeService rejects that notification shape
 with `Require(Resync)`. The synthetic pump rejects it under the bounded typed
 Retry policy. Neither source admits it to VspcProcessor.
