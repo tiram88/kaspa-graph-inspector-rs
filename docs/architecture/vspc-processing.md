@@ -46,16 +46,23 @@ Genesis; a derived source can be Genesis for the first transition.
 
 ## Processor lifecycle and gates — settled
 
-Conceptual commands are `BeginRebuild`, `BeginResync`, `Catchup`, `Live`,
-`Deactivate`, and `Shutdown`. Commands have priority over data inputs.
+The Begin variants use the
+[`VspcProcessorBegin`](processing-lifecycle.md#processor-begin-payloads)
+payload owned by the processing lifecycle. Conceptual commands are
+`BeginRebuild(VspcProcessorBegin)`, `BeginResync(VspcProcessorBegin)`,
+`Catchup`, `Live`, `Deactivate`, and `Shutdown`. Commands have priority over
+data inputs. VspcProcessor receives no RPC client.
 
 A Begin command resets all run-local pending state, history, overlap, and
-phase state and closes the local notification gate. Continue polling the
+phase state, installs the supplied DB generation, and closes the local
+notification gate. It sets `committed_vspc_sink = anchor.point` and seeds the
+new history from the same anchor as defined below, then enters the pre-Catchup
+synthetic-priority phase. Continue polling the
 notification receiver while the gate is closed and discard notifications
 immediately rather than accumulating them. Catchup opens the gate with its
-objective synthetic-sink lower bound. Deactivate clears run-local state,
-releases the processing session's DB client clone, and acknowledges only after
-the local barrier is complete.
+objective synthetic-sink lower bound. Begin has no acknowledgement. Deactivate
+clears run-local state, releases the processing session's DB client clone, and
+acknowledges only after the local barrier is complete.
 
 ## Pending state and history — settled
 
@@ -68,6 +75,31 @@ Resolution supports both event-before-block and block-before-event. Keep:
 - missing hash to waiting pending IDs;
 - hash to recent `PersistedBlock` history; and
 - `ConsensusOrder` to hash for ordered pruning and history lookup.
+
+The dual-indexed materialization history is conceptually:
+
+```rust
+struct MaterializedHistory {
+    by_hash: HashMap<BlockHash, PersistedBlock>,
+    by_order: BTreeMap<ConsensusOrder, BlockHash>,
+}
+```
+
+After clearing the prior run's history, either Begin command constructs and
+inserts this seed into both indexes:
+
+```rust
+PersistedBlock {
+    point: anchor.point,
+    selected_parent: anchor.selected_parent,
+}
+```
+
+For a Genesis anchor the selected parent is synthetic ORIGIN. This history
+record is constructed locally from Begin; Genesis is never received through
+the ordinary `BlockPersisted` data path. For every later block, the history
+record comes from BlockProcessor's `PersistedBlock` delivery. The anchor seed
+and later records provide the same non-null point and selected-parent shape.
 
 These pending structures share one bounded capacity. A single
 `HashMap<BlockHash, Vec<VspcChange>>` cannot represent multi-dependency

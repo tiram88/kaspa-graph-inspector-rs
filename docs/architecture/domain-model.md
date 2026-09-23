@@ -32,6 +32,7 @@ struct BlockCoordinate {
 
 struct MaterializedSyncAnchor {
     point: VspcPoint,
+    selected_parent: BlockHash,
     blue_score: u64,
 }
 ```
@@ -40,6 +41,11 @@ struct MaterializedSyncAnchor {
 contains that order and must not duplicate the block hash. Explicit `hash()`,
 `order()`, and `id()` accessors are allowed; `Deref` must not model the
 relationship.
+
+`MaterializedSyncAnchor` is the complete committed starting point shared by
+the recovery pump and both processors. Its non-null `selected_parent` is the
+persisted selected-parent hash. For Genesis it is synthetic ORIGIN, which is
+not an actual direct parent.
 
 `CompactId` is an incremental positive signed 64-bit internal identifier. It
 is private to storage and processing and is not a public block identity.

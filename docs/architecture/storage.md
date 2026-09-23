@@ -272,7 +272,9 @@ a level, but a reorg can leave an existing level without one.
 
 There is no dedicated persisted VSPC checkpoint. The committed materialized
 VSPC sink is derived as the maximum-ID materialized block with
-`is_in_vspc = true` and returned with its ID, hash, and stored DAA score.
+`is_in_vspc = true` and returned with its ID, hash, selected-parent hash, and
+stored DAA score. Resolve the non-null `blocks.selected_parent_id` through
+`block_identifiers`; for Genesis this yields synthetic ORIGIN.
 
 Per-block blue work and blue score are not stored. `db_pp_blue_score` is the
 only persisted blue-score metadata. The
@@ -334,7 +336,8 @@ This is not a general clear primitive callable without a pruning point.
 
 When the PP's selected parent is synthetic ORIGIN, the transaction creates
 that permanent outside-boundary identity and uses its non-null ID. Genesis's
-actual direct-parent list remains empty.
+actual direct-parent list remains empty. The returned anchor carries the
+ORIGIN hash as `selected_parent`.
 
 The [API Reset barrier](api.md#reset-and-recovery-time-availability--settled)
 and the [processing lifecycle](processing-lifecycle.md) own when this operation

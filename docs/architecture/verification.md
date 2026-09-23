@@ -181,11 +181,13 @@ through 100% jitter range.
 ## Recovery lifecycle and Catchup
 
 Verify [Resync preparation](processing-lifecycle.md#resync-preparation) with
-fixtures that combine stored sink ID/hash/DAA score with an exact
-no-transactions GetBlock header. Cover:
+fixtures that combine stored sink ID/hash/selected-parent hash/DAA score with
+an exact no-transactions GetBlock header. Cover:
 
 - successful `MaterializedSyncAnchor` construction, including a header-only
   node block;
+- exact propagation into both processor Begin payloads, including
+  VspcProcessor initialization of its committed sink and history seed;
 - a definitively absent or invalid sink and a DAA mismatch requiring Rebuild;
 - transport or session failure without inferring Rebuild; and
 - a response carrying the wrong hash as a protocol/session fault.

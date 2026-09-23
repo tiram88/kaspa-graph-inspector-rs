@@ -76,11 +76,13 @@ Use explicit higher-priority polling or draining around lower-priority work.
 `tokio::select! { biased; ... }` alone does not guarantee this order under
 continually ready inputs.
 
-Conceptual commands are:
+The Begin variants use the
+[`BlockProcessorBegin`](processing-lifecycle.md#processor-begin-payloads)
+payload owned by the processing lifecycle. Conceptual commands are:
 
 ```text
-BeginRebuild
-BeginResync
+BeginRebuild(BlockProcessorBegin)
+BeginResync(BlockProcessorBegin)
 Catchup { lower_bound, ... }
 Live
 Deactivate
@@ -88,9 +90,18 @@ Shutdown
 ```
 
 A Begin command resets all processor-local run state: phase, source gates,
-overlap map and flag, orphan state, and descendants. Begin has no
-acknowledgement. `Deactivate` is an acknowledged descendant barrier; Shutdown
-is terminal under the shared lifecycle contract.
+overlap map and flag, orphan state, and descendants. It installs the exact DB
+and RPC generations for the run and activates DependencyResolver with that RPC
+generation. `BeginResync` requires the anchor blue score to satisfy the supplied
+seal threshold and starts in PostSeal. `BeginRebuild` compares the anchor hash
+with the validated node's Genesis hash: Genesis starts in PostSeal and emits
+`PpBoundarySealed` while handling Begin; every other pruning point starts in
+`PreSeal { seal_blue_score: boundary_seal_blue_score }`.
+
+Begin has no acknowledgement. `Deactivate` is an acknowledged descendant
+barrier; Shutdown is terminal under the shared lifecycle contract. No separate
+Genesis flag, recovery-mode field, or boundary-phase field is carried in the
+payload.
 
 The local notification gate closes on Begin and opens on Catchup. Continue
 polling its receiver while closed and discard received notifications
@@ -159,10 +170,12 @@ struct PersistedBlock {
 }
 ```
 
-The normal `PersistedBlock` path represents non-Genesis blocks and therefore
-has a mandatory selected parent. Genesis is handled by the rebuild/bootstrap
-path. No VSPC `added` or `removed` member is Genesis, although a derived VSPC
-source may be Genesis.
+Every `PersistedBlock` delivered by BlockProcessor represents a non-Genesis
+block and therefore has a mandatory selected parent. Genesis never enters the
+ordinary `BlockMaterialization` or BlockProcessor-to-consumer `PersistedBlock`
+path; VspcProcessor instead constructs its initial history record from the
+Begin anchor. No VSPC `added` or `removed` member is Genesis, although a derived
+VSPC source may be Genesis.
 
 After a definite successful insert, BlockProcessor sends the block's
 `BlockCommitted` graph update before delivering `PersistedBlock` to

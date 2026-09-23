@@ -257,6 +257,30 @@ struct PreparedSync {
 
 Do not add a redundant `ProcessingResources` wrapper.
 
+### Processor Begin payloads
+
+```rust
+struct BlockProcessorBegin {
+    rpc: Arc<ValidatedRpcClient>,
+    db: Arc<ValidatedDbClient>,
+    anchor: MaterializedSyncAnchor,
+    boundary_seal_blue_score: u64,
+}
+
+struct VspcProcessorBegin {
+    db: Arc<ValidatedDbClient>,
+    anchor: MaterializedSyncAnchor,
+}
+```
+
+After preparation and the applicable API Reset/publication ordering below,
+ResyncEngine constructs both Begin payloads from the same `PreparedSync` and
+sends the mode-specific `BeginResync` or `BeginRebuild` command to each
+processor. BlockProcessor receives the exact RPC and DB generations, the
+committed anchor, and the seal threshold. VspcProcessor receives the same DB
+generation and anchor but no RPC client. Both commands are exact-once and have
+no acknowledgement. Once both have been enqueued, the common pump may start.
+
 Once prepared, both modes use the same block/VSPC synchronization pump. Their
 only material difference is storage policy before PP-boundary sealing.
 
@@ -267,8 +291,8 @@ Storage reconciliation obtains:
 - database PP at `(level = 1, slot = 0)`;
 - `db_pp_blue_score` from metadata;
 - committed materialized VSPC sink derived as the maximum-ID materialized
-  block with `is_in_vspc = true`, including its ID, hash, and stored DAA
-  score.
+  block with `is_in_vspc = true`, including its ID, hash, selected-parent hash,
+  and stored DAA score.
 
 The storage query and committed-sink derivation are defined in
 [storage.md](storage.md#historical-read-contracts--settled). ResyncEngine owns
@@ -282,10 +306,11 @@ ResyncEngine uses the run's exact `Arc<ValidatedRpcClient>` to call
 `GetBlock(sink_hash, include_transactions = false)`. It requires the returned
 header hash to equal the requested sink hash and its DAA score to equal the
 stored sink DAA score. It then constructs `MaterializedSyncAnchor` from the
-stored ID and hash plus the header's blue work and blue score. A header-only
-node block is sufficient because no body or transactions are needed. KGI relies
-on successful GetBlock GhostDAG enrichment also establishing the recognition
-required to use the sink as a GetBlocks `low_hash`; the
+stored ID, hash, and selected-parent hash plus the header's blue work and blue
+score. A header-only node block is sufficient because no body or transactions
+are needed. KGI relies on successful GetBlock GhostDAG enrichment also
+establishing the recognition required to use the sink as a GetBlocks
+`low_hash`; the
 [PUAR](verification.md#pinned-upstream-assumption-review-policy) checks that
 upstream assumption against the reference revision.
 
@@ -332,7 +357,7 @@ rebuild_from_pruning_point(pp: SharedNodeBlock)
 
 The pruning point is mandatory. Storage owns the transaction, retained network
 binding, PP-boundary representation, metadata replacement, cache publication,
-and returned anchor; see
+and returned anchor, including the pruning point's selected-parent hash; see
 [storage.md](storage.md#rebuild-transaction--settled). ResyncEngine must not
 expose or use a general clear-without-PP primitive.
 
