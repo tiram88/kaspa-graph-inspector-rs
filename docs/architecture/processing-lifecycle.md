@@ -286,7 +286,8 @@ only material difference is storage policy before PP-boundary sealing.
 
 ### Resync preparation
 
-Storage reconciliation obtains:
+ResyncEngine calls
+`ValidatedDbClient::reconciliation_snapshot()`. Storage reconciliation obtains:
 
 - database PP at `(level = 1, slot = 0)`;
 - `db_pp_blue_score` from metadata;
@@ -295,7 +296,7 @@ Storage reconciliation obtains:
   and stored DAA score.
 
 The storage query and committed-sink derivation are defined in
-[storage.md](storage.md#historical-read-contracts--settled). ResyncEngine owns
+[storage.md](storage.md#reconciliation-snapshot--settled). ResyncEngine owns
 the orchestration and node-side validation below.
 
 An Empty state is genuinely fully empty and requests a distinct Rebuild run
@@ -351,8 +352,7 @@ validated RPC generation, then calls the only storage API that clears
 processing data:
 
 ```rust
-rebuild_from_pruning_point(pp: SharedNodeBlock)
-    -> MaterializedSyncAnchor
+let anchor = db.rebuild_from_pruning_point(pp).await?;
 ```
 
 The pruning point is mandatory. Storage owns the transaction, retained network

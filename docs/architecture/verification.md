@@ -139,21 +139,44 @@ and [rebuild transaction](storage.md#rebuild-transaction--settled) with:
 4. Database startup distinguishes Uninitialized, Empty, Initialized,
    structurally inconsistent processing contents, and rejected schemas.
    Persistent `--initialize-db` is idempotent for a compatible database and
-   never rebinds its network.
-5. Advisory-lock loss retires the DB generation. Compatible v2 migrations are
-   transactional and finish before client publication.
-6. Storage may open, lock, and inspect Uninitialized contents before node
+   never rebinds its network. Interactive initialization identifies the
+   database and complete network binding without exposing credentials;
+   noninteractive initialization requires explicit authorization. `--clear-db`
+   may authorize first initialization but never claims or rebinds an existing
+   incompatible schema.
+5. One-shot administrative reinitialization requires explicit confirmation,
+   replaces only a recognized KGI schema, binds the new Empty database to the
+   validated `(network_id, genesis_hash)`, and exits. A changed declarative
+   token performs the same reset once; restart with the stored token preserves
+   the database. Unknown tables are never claimed or destroyed, and neither
+   form can expose a partially recreated schema.
+6. Advisory-lock contention rejects with `DatabaseAlreadyInUse`, and lock loss
+   retires the DB generation. Compatible v2 migrations are ordered,
+   transactional, revalidated, and finish before client publication. Cover
+   newer-schema and v1/unsupported rejection, failed migration without client
+   publication, and the prohibition on automatic down or online migration.
+7. Storage may open, lock, and inspect Uninitialized contents before node
    validation, but only atomic publication of complete `NodeMetadata` crosses
    `Uninitialized -> Empty`. Inject a crash around this transaction and prove
    that no partially bound Empty state can appear.
-7. Node metadata is non-null and distinguishes Empty from Genesis-anchored
+8. Node metadata is non-null and distinguishes Empty from Genesis-anchored
    initialization despite both using `db_pp_blue_score = 0`. Reject the same
    `NetworkId` paired with a different Genesis rather than rebinding or
    rebuilding.
-8. A Genesis anchor is materialized at `(1,0)`, belongs to VSPC, has ORIGIN as
+9. A Genesis anchor is materialized at `(1,0)`, belongs to VSPC, has ORIGIN as
    selected parent and zero actual direct parents, and has a coherent committed
    sink. Any additional boundary identity classifies processing contents as
    Inconsistent and requires Rebuild.
+10. `rebuild_from_pruning_point` either publishes the complete replacement or
+   leaves the previous contents intact: Compact-ID allocation restarts, the PP
+   level receives its VSPC DAA score, no placeholder block rows exist, and
+   replacement caches publish only after definite commit. An ambiguous commit
+   retires the DB generation without reporting successful Rebuild.
+11. Materiality remains derived from `blocks`; ordinary processing performs no
+    individual block/identity deletion or boundary-identity promotion; parent
+    rows have no foreign keys or cascade semantics; merge-set IDs validate
+    transactionally; and coordinate uniqueness plus `levels.size` updates are
+    enforced in the insertion transaction.
 
 Verify the [block materialization transaction](storage.md#block-materialization-transaction--settled)
 and [PP seal behavior](block-processing.md#pp-boundary-phase-behavior--settled)

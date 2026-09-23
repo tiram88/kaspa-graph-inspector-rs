@@ -55,6 +55,11 @@ generation and owns that generation's caches. A processing run receives one
 exact client generation; StorageService never rebinds the client underneath
 the run. A replacement generation starts with fresh caches.
 
+Callers receive semantic read operations and complete domain transactions.
+Storage exposes no connection pool, database connection, transaction object,
+generic transaction closure, or partial write operations for identity
+interning, block rows, parent rows, levels, coloring, or VSPC membership.
+
 Transient connection and validation failures enter `Unavailable` and retry
 indefinitely with nominal delays:
 
@@ -143,25 +148,54 @@ compatible existing database: retain `Empty`, `Initialized`, or `Inconsistent`
 state without erasing data or changing its network binding. An `Inconsistent`
 database remains usable only for Rebuild and is not misclassified as `Empty`.
 Without the flag, first initialization requires interactive confirmation;
-noninteractive startup fails with an actionable confirmation error.
+noninteractive startup fails with `InitializationConfirmationRequired` and
+identifies `--initialize-db` as the unattended authorization.
+
+The CLI confirmation identifies the database using safe endpoint information,
+shows the exact network type and suffix plus the RPC-discovered Genesis hash,
+and states that ordinary Rebuild cannot change that binding. It never displays
+database credentials. `--initialize-db` is the explicit unattended equivalent;
+a generic `--yes` does not authorize initialization. `--clear-db` expresses
+stronger processing-data replacement intent and also authorizes first
+initialization when the database is genuinely Uninitialized, but it never
+authorizes rebinding or claiming an unknown, partial, or unsupported schema.
+The CLI/bootstrap layer owns terminal interaction. StorageService owns state
+detection, locking, revalidation, and the initialization transaction and never
+reads standard input itself.
 
 An existing database is never silently rebound to the CLI network, the
 validated node's Genesis, or reset. A mismatch in either immutable binding
 field is rejected rather than repaired through Rebuild.
 `--clear-db` requests processing-data Rebuild under the existing compatible
-network binding. A persistent destructive `--reinitialize-db --yes` startup
-option is forbidden; a separate explicit administrative reset remains
-open in the [decision register](../decisions/open.md).
+network binding. Administrative reinitialization follows the separate settled
+contract below.
 
 StorageService acquires a dedicated PostgreSQL session advisory lock before
 initialization, migration, or validation and holds it throughout the
 validated-client lifetime. It rechecks state under that lock before first
 initialization. Losing the lock connection retires the client and active
-processing session.
+processing session; no replacement client is published until StorageService
+reconnects and reacquires the lock. Failure to acquire the lock is terminal
+`Rejected(DatabaseAlreadyInUse)`. Process-local mutation guards and lane locks
+cannot replace this database-wide ownership proof.
 
-Supported older v2 schemas migrate forward through ordered transactional
-migrations under the lock before client publication. Automatic down, online,
-or in-place v1-to-v2 migration is forbidden.
+Schema migration versioning belongs to the selected migration framework's own
+table, outside `NodeMetadata`. Under the advisory lock and before publishing a
+validated client:
+
+- an absent schema follows the authorized first-initialization path;
+- a supported older v2 schema migrates through ordered, embedded, forward-only
+  migrations and is fully revalidated afterward;
+- the current schema is validated and published without migration;
+- a schema newer than the binary is `Rejected(SchemaTooNew)`; and
+- a v1 or otherwise unsupported schema is `Rejected(UnsupportedSchema)`.
+
+Every ordinary migration is transactional. A failed migration publishes no
+validated client. Automatic down migration, migration during a processing
+session, online migration, and in-place v1-to-v2 migration are forbidden. Any
+future migration that cannot be transactional must be an explicit offline
+administrative upgrade. The possible offline v1-to-v2 import remains outside
+v2 in [future-work.md](../future-work.md) and does not change startup rejection.
 
 The correctness metadata, called **node metadata**, is conceptually:
 
@@ -174,16 +208,36 @@ struct NodeMetadata {
 ```
 
 `network_id` and `genesis_hash` form the immutable database network binding.
-No field is nullable and a partially bound `NodeMetadata` is invalid.
+`NetworkId` includes the network type and suffix, and both are compared
+exactly. No field is nullable and a partially bound `NodeMetadata` is invalid.
 `db_pp_blue_score` is zero in an `Empty` database and in an initialized
 Genesis-anchored database. PP presence distinguishes those states. For any
-other initialized database it is the retained PP's blue score.
+other initialized database it is the retained PP's blue score. First
+initialization writes zero, `rebuild_from_pruning_point` replaces it atomically,
+and ordinary block or VSPC processing never updates it.
 `ValidatedDbClient` exposes the immutable `NodeMetadata` read from its exact
 database generation for session binding checks.
 
+There is no `persist_node_metadata` operation and NodeService never writes
+PostgreSQL. StorageService writes complete `NodeMetadata` atomically during
+first initialization or administrative reinitialization.
+`rebuild_from_pruning_point` changes only `db_pp_blue_score` within its complete
+processing-data replacement transaction. Observational node information is not
+persisted.
+
 The database PP is located by `(level=1, slot=0)`, never by assuming ID 1 or
-the minimum ID. A last-known node server version is observational and is not
-persisted as correctness metadata.
+the minimum ID. DB PP hash, committed VSPC sink, boundary seal threshold, and
+PP-boundary phase are derived from persisted graph state, current consensus
+parameters, or current-session state rather than duplicated in metadata. No
+database generation or epoch is persisted; validated-client lifetime provides
+that boundary.
+
+Node server and RPC versions, node endpoint, current node PP and IBD state, and
+consensus parameters are observational runtime information. They never
+participate in database compatibility, reconciliation, or recovery decisions
+and are not stored in `NodeMetadata`. ApiService obtains the currently
+validated node server version from NodeService without requiring last-observed
+node metadata in PostgreSQL.
 
 An initialized database whose PP hash equals `NodeMetadata.genesis_hash` is a
 valid Genesis anchor only when all of these invariants hold:
@@ -197,6 +251,115 @@ valid Genesis anchor only when all of these invariants hold:
 
 An extra boundary identity or another violation of these processing
 invariants classifies the database as `Inconsistent` and requires Rebuild.
+
+The coherent processing-state checks also require:
+
+```text
+Empty:
+    block_identifiers, blocks, parents, and levels are all empty
+    no PP and no committed materialized VSPC sink exist
+
+Initialized:
+    PP, db_pp_blue_score, levels(1), and a committed materialized VSPC sink
+    all exist and agree
+```
+
+A PP without its level, a PP whose blue score disagrees with
+`db_pp_blue_score`, a nonzero `db_pp_blue_score` without a PP, materialized
+blocks without a PP, a missing committed sink, or an identity/materiality
+violation is `Inconsistent`, not `Uninitialized`. A zero score without a PP is
+valid only when every processing table is empty as required by `Empty`.
+Unknown tables, v1, and partial v2 schemas are rejected rather than silently
+claimed.
+
+### Storage failure classification
+
+| Condition | Storage classification |
+|---|---|
+| Database temporarily unreachable | `Unavailable`; retry connection under the service backoff policy |
+| Validated pool or advisory-lock connection fails | Retire the validated client and terminate its processing session |
+| Database already owned by another KGI | `Rejected(DatabaseAlreadyInUse)` |
+| Immutable `(network_id, genesis_hash)` mismatch | `Rejected(NetworkMismatch)` |
+| Schema newer than the binary | `Rejected(SchemaTooNew)` |
+| Unsupported, v1, partial, or unknown schema | `Rejected(UnsupportedSchema)` |
+| Compatible migration fails | Publish no validated client; report the typed startup storage failure |
+| Processing contents are `Inconsistent` | Keep the compatible database usable for Rebuild; never permit Resync |
+| Rebuild commit outcome is ambiguous | Retire the validated client and retain Rebuild |
+| Domain invariant violation inside an operation | Typed operation/session failure for the owning caller |
+
+## Administrative reinitialization — settled
+
+Administrative reinitialization is a schema-lifecycle operation, not a
+`RecoveryMode`. It is the only operation allowed to destroy a recognized KGI
+schema, replace its migration history, and change the immutable network
+binding. It has two entry forms:
+
+```text
+kgi-processing database reinitialize --network-id <network> [--yes]
+--reinitialize-db-token=<token>
+```
+
+The separate `database reinitialize` command is the preferred operator path.
+Without `--yes`, it displays the database identity, existing binding if any,
+the new exact `(network_id, genesis_hash)` binding, and the loss of all KGI
+data and migration history, then requires interactive confirmation. It never
+displays database credentials. A noninteractive invocation without `--yes`
+fails rather than waiting for input. The command runs once and exits; there is
+no persistent destructive `--reinitialize-db --yes` service option.
+
+Both entry forms obtain the target Genesis hash from a validated RPC client.
+The CLI `NetworkId` must match that client's exact network type and suffix.
+Before replacing anything, the operation:
+
+1. acquires the database advisory lock;
+2. runs before any `ValidatedDbClient` is published;
+3. reinspects the database while holding the lock; and
+4. accepts only an empty Uninitialized database or a recognized KGI v1/v2
+   schema, never unknown user tables or an unrecognized partial schema.
+
+One transaction removes the recognized KGI schema and data, installs the
+latest v2 schema, writes complete `NodeMetadata` with the validated
+`(network_id, genesis_hash)` and `db_pp_blue_score = 0`, leaves every processing
+table empty, and records the supplied reinitialization token when applicable.
+Definite commit produces a coherent network-bound `Empty` database. Rollback
+leaves the previous database intact, and an ambiguous commit retires the
+storage generation without reporting successful reinitialization. PostgreSQL
+database ownership and configuration remain outside the replaced KGI schema.
+
+Reinitialization is never triggered automatically by Resync, Rebuild,
+inconsistent processing contents, corruption detection, or migration failure.
+After the one-shot command exits, ordinary startup observes `Empty` and
+requires Rebuild from the validated node's pruning point.
+
+The declarative token supports persistent Docker, Compose, systemd, and
+similar configuration without repeating destruction on every restart. Its
+state is administrative metadata separate from `NodeMetadata`:
+
+```rust
+struct AdministrativeMetadata {
+    last_reinitialization_token: Option<String>,
+}
+```
+
+Its exact-match semantics are:
+
+```text
+no token supplied:
+    never force reinitialization
+
+token T supplied and stored token == T:
+    continue ordinary startup without clearing anything
+
+token T supplied and stored token != T:
+    reinitialize once and atomically store T in the replacement schema
+```
+
+If an authorized first initialization receives a token, it stores that token
+with the new schema; the token does not replace the separate authorization
+required for `Uninitialized -> Empty`. Changing the configured token requests
+one new reset. Restarting with the same token is idempotent. The token is not a
+database generation and never participates in compatibility, reconciliation,
+or recovery decisions.
 
 ## Persistent representation — settled
 
@@ -266,6 +429,14 @@ The materialization transaction validates their identities and embeds both
 endpoint coordinates. An outside-boundary parent uses the sentinel `(0,0)`.
 `levels.size` is the number of allocated slots at the level.
 
+Materiality is derived from the presence of a `blocks` row; there is no
+persistent `materialized` flag. Ordinary processing never deletes individual
+blocks or identities, and permanent boundary identities are never promoted.
+The parent table deliberately has neither foreign keys nor cascade deletion.
+Merge-set arrays likewise have no element-level foreign keys; their IDs are
+validated transactionally. `UNIQUE(level, slot)` is the final coordinate
+backstop, and `levels.size` changes atomically with block insertion.
+
 `levels.daa_score = i64::MAX` means that the level has no current VSPC block.
 New levels use this sentinel, not zero. At most one current VSPC block occupies
 a level, but a reorg can leave an existing level without one.
@@ -291,6 +462,26 @@ struct CachedIdentity {
     id: CompactId,
     materialized: bool,
 }
+
+enum ResolveMaterializedIdsError {
+    Storage(StorageError),
+    NonMaterialized {
+        missing: Box<[BlockHash]>,
+        identity_only: Box<[BlockHash]>,
+    },
+}
+
+impl ValidatedDbClient {
+    async fn block_presence(
+        &self,
+        hash: BlockHash,
+    ) -> Result<BlockPresence, StorageError>;
+
+    async fn resolve_materialized_ids(
+        &self,
+        hashes: &[BlockHash],
+    ) -> Result<Box<[CompactId]>, ResolveMaterializedIdsError>;
+}
 ```
 
 Caches contain:
@@ -303,41 +494,188 @@ Do not cache negative identity results, mutable colors, or VSPC membership.
 Cold identity batches may left-join `blocks` to obtain the materialized bit.
 Publish cache entries only after the corresponding definite commit.
 
-`ValidatedDbClient::resolve_materialized_ids` takes one ordered hash batch and
-returns one ID per input position, including repeated hashes. It resolves
-cache hits, performs at most one SQL read for all misses, and never writes,
-interns, or promotes identities. Absent and boundary-identity hashes produce
-distinct typed errors; only materialized hashes succeed.
+`block_presence` is the settled replacement for the insufficient Boolean
+`check_block_materiality` candidate. It distinguishes all three shared
+`BlockPresence` states without creating an identity.
+
+`resolve_materialized_ids` takes one ordered hash batch and returns one ID per
+input position, including repeated hashes. It resolves cache hits, performs at
+most one SQL read for all misses, and never writes, interns, or promotes
+identities. Its `NonMaterialized` error reports absent and boundary-identity
+hashes separately; only materialized hashes succeed.
 
 ## Rebuild transaction — settled
 
-The sole API that clears processing data is:
+The sole processing-recovery API allowed to clear processing data is:
 
 ```rust
-async fn rebuild_from_pruning_point(
-    pp: SharedNodeBlock,
-) -> Result<MaterializedSyncAnchor, DbError>;
+impl ValidatedDbClient {
+    async fn rebuild_from_pruning_point(
+        &self,
+        pruning_point: SharedNodeBlock,
+    ) -> Result<MaterializedSyncAnchor, StorageError>;
+}
 ```
 
-The pruning point argument is mandatory. One transaction:
+The pruning point is mandatory. Administrative schema reinitialization is a
+separate [schema-lifecycle operation](#administrative-reinitialization--settled)
+and is never implemented through this method. There is no processing-data
+clear primitive without a pruning point.
 
-1. clears processing data and PP-derived processing metadata;
-2. restarts identity allocation;
-3. interns required PP-boundary identities;
-4. materializes PP at `(level=1, slot=0)`;
-5. marks PP in VSPC and initializes `levels`;
-6. stores `db_pp_blue_score`; and
-7. returns the resulting materialized anchor after commit.
+### Preconditions and exclusive access
+
+Before calling the method, the processing lifecycle has established all of
+these conditions:
+
+- ResyncEngine is executing `RecoveryMode::Rebuild` with one fixed
+  `Arc<ValidatedRpcClient>` and this exact `Arc<ValidatedDbClient>`;
+- the validated RPC `(network_id, genesis_hash)` equals this database
+  generation's immutable `NodeMetadata` binding;
+- the complete pruning-point block was obtained and validated through that RPC
+  generation;
+- the API Reset barrier required before database replacement has completed;
+- both processors have completed Deactivate and no earlier processing session
+  retains either validated client; and
+- StorageService still owns the database advisory lock through its dedicated
+  lock connection.
+
+The method acquires the exclusive mutation guard without waiting. Failure to
+acquire it after completed processor deactivation is a lifecycle invariant
+violation; Rebuild must not wait behind an unexpected processor mutation.
+
+### Atomic replacement
+
+One database transaction performs the complete replacement:
+
+1. Clear `parents`, `blocks`, `levels`, and `block_identifiers`, and replace the
+   PP-derived `db_pp_blue_score` within the same transaction.
+2. Restart Compact-ID allocation.
+3. Intern pruning-point hashes in the universal order:
+
+   ```text
+   red merge-set hashes
+   blue merge-set hashes
+   direct-parent hashes
+   selected-parent hash
+   pruning-point hash
+   ```
+
+   Deduplicate hashes by first occurrence before insertion.
+4. Represent every retained-boundary-external pruning-point reference as a
+   permanent `BoundaryIdentity`. Do not create placeholder `blocks` rows for
+   parents, merge-set members, or other references.
+5. Materialize the pruning point itself with:
+
+   ```text
+   coordinate  = (level=1, slot=0)
+   color       = Gray
+   is_in_vspc  = true
+   ```
+
+   Its block row stores timestamp, DAA score, the non-null selected-parent ID,
+   and the ordered blue and red merge-set IDs.
+6. Insert each actual direct-parent relation using the parent's interned ID and
+   the outside-boundary coordinate sentinel `(0,0)`. The child coordinate is
+   the pruning point's `(1,0)`.
+7. Create `levels(level=1, size=1)` with the pruning point's DAA score because
+   the pruning point is the current VSPC block at that level.
+8. Store `NodeMetadata.db_pp_blue_score = pruning_point.blue_score` without
+   changing the immutable network binding.
+9. Commit all processing data and PP-derived metadata atomically.
+
+No empty or partially rebuilt processing generation becomes visible.
+
+Immediately after definite commit:
+
+```text
+database PP          = block at (level=1, slot=0)
+committed VSPC sink  = pruning point
+levels(1).size       = 1
+```
+
+For a Genesis pruning point, the bootstrap path stores synthetic ORIGIN as the
+non-null selected-parent identity while storing zero actual direct parents.
+ORIGIN is not a direct parent. Genesis never enters ordinary
+`BlockMaterialization` or the BlockProcessor `PersistedBlock` delivery path.
+
+### Return value
+
+After definite commit, the method returns the current shared
+`MaterializedSyncAnchor` populated as:
+
+```rust
+MaterializedSyncAnchor {
+    point: VspcPoint {
+        consensus_order: ConsensusOrder {
+            blue_work: pruning_point.blue_work,
+            hash: pruning_point.hash,
+        },
+        id: pruning_point_id,
+    },
+    selected_parent: pruning_point.selected_parent,
+    blue_score: pruning_point.blue_score,
+}
+```
+
+For Genesis, `selected_parent` is the ORIGIN hash. The anchor does not duplicate
+the block hash outside `ConsensusOrder` and does not carry its storage
+coordinate.
+
+### Preserved state
 
 The immutable `(network_id, genesis_hash)` binding and schema/migration state
 survive. Rebuild atomically replaces only `db_pp_blue_score` with the supplied
-PP's score. Cache reset and seed are published only after definite commit.
-This is not a general clear primitive callable without a pruning point.
+pruning point's score and replaces only processing data. It cannot rebind the
+database, replace its schema, change PostgreSQL ownership or configuration, or
+perform administrative reinitialization.
 
-When the PP's selected parent is synthetic ORIGIN, the transaction creates
-that permanent outside-boundary identity and uses its non-null ID. Genesis's
-actual direct-parent list remains empty. The returned anchor carries the
-ORIGIN hash as `selected_parent`.
+An `Empty` or `Inconsistent` database becomes `Initialized` only through the
+definite commit of this transaction. Rebuild of an already `Initialized`
+database uses the same complete replacement.
+
+### Cache publication
+
+Only after definite commit, the current `ValidatedDbClient`:
+
+1. clears its identity, coordinate, and merge-set caches;
+2. seeds every newly interned pruning-point reference as
+   `{ id, materialized: false }`;
+3. seeds the pruning-point identity as `{ id, materialized: true }`; and
+4. seeds the pruning-point coordinate and immutable merge sets.
+
+No replacement cache state is visible before commit. A failed or ambiguous
+attempt publishes none of these cache changes.
+
+### Boundary state after commit
+
+No database boolean records PP-boundary sealing. For a non-Genesis pruning
+point, the transaction establishes the boundary but BlockProcessor begins in
+PreSeal and uses the derived seal threshold owned by the
+[block-processing contract](block-processing.md#pp-boundary-phase-behavior--settled).
+For Genesis, the committed boundary is intrinsically sealed and BlockProcessor
+begins directly in PostSeal.
+
+Storage does not emit `PpBoundarySealed`. A successful rebuild commit alone
+does not consume Supervisor's retained Rebuild requirement; the processing
+lifecycle owns the subsequent exact-once milestone and recovery-intent change.
+
+### Failure outcomes
+
+The complete-transaction retry policy above applies only to its authorized
+SQLSTATEs. Each retry repeats the entire atomic replacement and publishes no
+intermediate cache state.
+
+A definite transaction failure rolls back to the previous database contents,
+publishes no replacement cache state, and returns the typed database error.
+The Rebuild requirement remains outstanding.
+
+If commit acknowledgement is lost, the outcome is ambiguous. The method does
+not report success, emit a milestone, publish cache changes, or retry blindly.
+StorageService retires the current `ValidatedDbClient` generation; the
+processing session terminates while retaining Rebuild, and the next validated
+generation rederives database truth. Even if the transaction actually
+committed, the requirement remains until a later run reaches the ordinary
+`PpBoundarySealed` milestone.
 
 The [API Reset barrier](api.md#reset-and-recovery-time-availability--settled)
 and the [processing lifecycle](processing-lifecycle.md) own when this operation
@@ -354,7 +692,6 @@ struct BlockMaterialization {
     red_merge_set: Vec<BlockHash>,
     timestamp: Timestamp,
     daa_score: u64,
-    // other immutable KGI-used RPC fields, if required
 }
 
 enum ReferencePolicy {
@@ -366,6 +703,14 @@ struct MaterializeBlockOutcome {
     id: CompactId,
     coordinate: BlockCoordinate,
     inserted: bool,
+}
+
+impl ValidatedDbClient {
+    async fn materialize_block(
+        &self,
+        block: BlockMaterialization,
+        policy: ReferencePolicy,
+    ) -> Result<MaterializeBlockOutcome, StorageError>;
 }
 ```
 
@@ -441,6 +786,15 @@ transition.
 
 ## Atomic VSPC transaction — settled
 
+```rust
+impl ValidatedDbClient {
+    async fn apply_vspc_change(
+        &self,
+        change: ReadyVspcChange,
+    ) -> Result<VspcPoint, StorageError>;
+}
+```
+
 Storage requires the supplied source to equal the currently committed sink.
 Every block directly named in `removed` or `added` must be materialized; the
 vectors contain no duplicates or intersection. Storage loads each added
@@ -461,8 +815,56 @@ Applying red after blue resolves any merge-set overlap deterministically. A
 remove/add sequence may temporarily alter and then restore a level score; only
 the final value is persisted.
 
-The whole change commits atomically and returns the destination `VspcPoint`.
-Storage does not return a separate list of level-score changes.
+The owned change is consumed so definite commit can return its destination
+`VspcPoint` without cloning it. Storage does not return a separate list of
+level-score changes.
+
+## Reconciliation snapshot — settled
+
+```rust
+enum ReconciliationState {
+    Empty,
+    Existing(ReconciliationSnapshot),
+}
+
+struct ReconciliationSnapshot {
+    db_pp: StoredBlockPoint,
+    db_pp_blue_score: u64,
+    committed_vspc_sink: StoredVspcSink,
+}
+
+struct StoredBlockPoint {
+    hash: BlockHash,
+    id: CompactId,
+    coordinate: BlockCoordinate,
+}
+
+struct StoredVspcSink {
+    hash: BlockHash,
+    id: CompactId,
+    selected_parent: BlockHash,
+    daa_score: u64,
+}
+
+impl ValidatedDbClient {
+    async fn reconciliation_snapshot(
+        &self,
+    ) -> Result<ReconciliationState, StorageError>;
+}
+```
+
+`reconciliation_snapshot` is the settled storage operation behind the earlier
+conceptual `load_reconciliation_state` name. One read-only transaction locates
+the database PP exclusively at `(level=1, slot=0)`, reads
+`NodeMetadata.db_pp_blue_score`, derives the committed sink as the maximum-ID
+materialized VSPC block, resolves its selected-parent hash, and verifies that
+the PP and sink are materialized and mutually coherent.
+
+Return `Empty` only for the coherent network-bound Empty state. Inconsistent
+combinations return a typed `StorageError` rather than an incomplete snapshot.
+The result contains no node-derived blue work or blue score. ResyncEngine uses
+the run's exact validated RPC generation to enrich and validate the stored sink
+before constructing `MaterializedSyncAnchor`.
 
 ## Historical read contracts — settled
 

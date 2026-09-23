@@ -20,6 +20,7 @@ defines the operative behavior.
 | Escalate an arbitrary count of failed Resync attempts to Rebuild. | Recovery strength follows typed evidence rather than retry count. |
 | Retry services or recovery immediately or without a rate bound. | The lifecycle contracts define capped jittered schedules and terminal rejection. |
 | Transparently retry an ambiguous database commit. | Only definite `40001` and `40P01` rollbacks permit bounded whole-transaction retry. |
+| Use a persistent destructive `--reinitialize-db --yes` service option. | Schema replacement uses a one-shot administrative command or a changed idempotent token; an unchanged persistent configuration never repeats the reset. |
 | Persist a dedicated VSPC checkpoint or sink table. | The committed sink is derived from retained block state. |
 | Persist PP identity separately by CompactId. | Database PP is the retained block at `(1, 0)`. |
 | Add committed-index waiters. | Commit and dedup return the block ID and BlockProcessor delivers `PersistedBlock` asynchronously. |

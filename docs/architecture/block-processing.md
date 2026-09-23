@@ -111,8 +111,8 @@ this input.
 
 ### Admission and materialization
 
-The first block filter checks processor phase and the source gate. Then query
-storage for materiality:
+The first block filter checks processor phase and the source gate. It then
+calls `ValidatedDbClient::block_presence(block_hash)`:
 
 - an already materialized block deduplicates and still yields its
   `PersistedBlock` identity to downstream consumers;
@@ -120,6 +120,13 @@ storage for materiality:
   the phase's current storage reference policy; and
 - a permanent boundary identity used as the incoming block is an invariant
   violation.
+
+The earlier conceptual `check_block_materiality()` Boolean is superseded by
+this three-state lookup. There is no separate public
+`resolve_materialized_dependencies()` storage operation: reference validation
+and complete missing-reference reporting occur inside the atomic
+`ValidatedDbClient::materialize_block(block, policy)` transaction. This avoids
+splitting readiness from the commit that relies on it.
 
 PreSeal boundary absences are accepted only through
 `AllowBoundaryIdentities`. Strict pre-Catchup missing material requires

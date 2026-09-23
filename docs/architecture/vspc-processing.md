@@ -147,6 +147,11 @@ CHAIN_READY: ready.source == committed_vspc_sink
 BLOCK_READY: ready.destination is BoundaryMaterialized
 ```
 
+`resolve_vspc_readiness()` names this processor-local resolution and sequencing
+step; it is not a storage API with an independently settled call signature.
+VspcProcessor maintains pending/history state, constructs `ReadyVspcChange`,
+and invokes the precise storage operations below.
+
 An actionable reorg calls
 `ValidatedDbClient::resolve_materialized_ids(removed + added)` once. The
 ordered, cache-first result preserves input positions, including repeats, and
@@ -169,6 +174,9 @@ The storage transaction validates source continuity, every direct chain
 member's materiality, and vector consistency. Its complete persistence and
 coloring behavior is defined by the
 [atomic VSPC transaction](storage.md#atomic-vspc-transaction--settled).
+Definite readiness commits through
+`ValidatedDbClient::apply_vspc_change(ready)` and adopts the returned
+destination as the new committed sink.
 
 ## Catchup filtering, crossing, and overlap — settled
 
