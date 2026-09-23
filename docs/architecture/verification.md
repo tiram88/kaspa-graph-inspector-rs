@@ -44,8 +44,9 @@ The PUAR checklist is:
 4. Body-tip storage is updated before the corresponding BlockAdded notification
    is emitted, and `GetBlockDagInfo.tip_hashes` comes from that body-tip state.
 5. Virtual selected-sink behavior preserves the documented removed/added
-   ordering, excludes removed-only changes, can emit the documented fully
-   empty no-op, and never places Genesis in `added` or `removed`.
+   ordering, excludes changes with a nonempty removed chain and an empty added
+   path, can emit the documented fully empty no-op, and never places Genesis in
+   `added` or `removed`.
 6. BlockAdded duplicate and verbose-data behavior matches NodeService and
    BlockProcessor assumptions, including the enrichment-failure form without
    verbose data.
@@ -93,7 +94,9 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
 
 1. GetBlocks fixtures for the inclusive low hash, unequal hash/block vector
    lengths, hash/block disagreement, duplicates, and a valid response that
-   normalizes to zero blocks.
+   normalizes to zero blocks. For every malformed recovery shape, assert typed
+   rejection, no cursor or processor advancement, and retirement of the exact
+   RPC generation.
 2. Genesis discovery request construction with `low_hash = None`, blocks and
    transactions disabled, plus response validation for a nonempty hash vector,
    empty block vector, transport failure, and malformed output. Given a valid
@@ -105,10 +108,16 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
 4. VSPC V2 request construction uses `min_confirmation_count = None` and
    `data_verbosity_level = Some(RpcDataVerbosityLevel::None)`. Mocked valid
    complete-prefix and advancing-cursor responses exercise KGI's pump behavior.
-5. Mocked removed-only notification and VSPC V2 responses. Assert the
-   source-specific dispositions: a notification requires Resync; a synthetic
-   page does not advance its cursor and uses the bounded whole-attempt Retry
-   policy.
+   Reject a removed chain without an added path, duplicate members,
+   removed/added intersection, and a nonadvancing nonempty added cursor as the
+   corresponding `MalformedVspcResponse` reason, with generation retirement
+   and no cursor advancement.
+5. Mocked notification and VSPC V2 responses with a nonempty removed chain and
+   an empty added path. Assert the source-specific dispositions: a notification
+   requires Resync; `ValidatedRpcClient` rejects a synthetic response as
+   `MalformedVspcResponse(RemovedChainWithoutAddedPath)` without returning a
+   normalized change, and ResyncEngine follows the shared malformed
+   recovery-response policy without dispatch or cursor advancement.
 6. The subscription activation order in
    [NotificationRouter](node-service.md#notificationrouter): routing remains
    Disabled until both remote starts succeed, callbacks received during that
@@ -211,9 +220,12 @@ an exact no-transactions GetBlock header. Cover:
   node block;
 - exact propagation into both processor Begin payloads, including
   VspcProcessor initialization of its committed sink and history seed;
-- a definitively absent or invalid sink and a DAA mismatch requiring Rebuild;
+- a definitively absent sink, incoherent stored sink, and a DAA mismatch
+  requiring Rebuild;
 - transport or session failure without inferring Rebuild; and
-- a response carrying the wrong hash as a protocol/session fault.
+- a response carrying the wrong hash or missing required GhostDAG header data
+  as `MalformedGetBlock`, retiring the exact RPC generation without inferring
+  Rebuild.
 
 Also cover a coherent Genesis-anchored database below anticone finalization
 depth, Empty-versus-Genesis discrimination, exact node/database
@@ -275,11 +287,16 @@ with injected clocks and deterministic jitter:
 - whole-attempt recovery Retry rather than in-place page/RPC retry;
 - the general delay sequence and 30-second cap;
 - no second delay while awaiting a replacement service generation;
-- resets on Live, new resource generation, and stronger obligation;
+- the general Retry backoff resets on Live, a new resource generation, and a
+  stronger obligation;
 - recovery requirements do not consume Retry backoff;
-- three removed-only synthetic retries on one RPC generation followed by
-  Fatal on the fourth, with reset only on a new RPC generation or
-  `EnteredLive`; and
+- one shared counter across malformed GetBlock, GetBlocks, and VSPC response
+  kinds and all VSPC reasons, including `RemovedChainWithoutAddedPath`: each of
+  the first three occurrences retires its producing generation and retries only
+  after replacement, the fourth is Fatal, replacement generations and stronger
+  recovery do not reset the counter, `EnteredLive` does reset it, and
+  NodeService reconnect delay is not combined with the general recovery Retry
+  delay; and
 - typed fault kinds, never diagnostics, drive policy and counters.
 
 Verify [teardown](processing-lifecycle.md#teardown-and-delivery-semantics--settled)

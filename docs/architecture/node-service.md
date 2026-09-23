@@ -189,8 +189,8 @@ Pinned rusty-kaspa inspection establishes that virtual processing can emit a
 fully empty VirtualChainChanged notification when processing a side block
 does not move the selected-chain sink. This notification filter is distinct
 from handling an empty VSPC V2 RPC page in the synchronization pump. Pinned
-sink selection cannot produce a removed-only notification; that shape is the
-fault above, not another no-op.
+sink selection cannot produce a notification with a nonempty removed chain and
+an empty added path; that shape is the fault above, not another no-op.
 
 In a short Live IBD episode, connection loss or a violated stream invariant
 already causes recovery. NodeService has no separate continuous-IBD mode in
@@ -212,6 +212,12 @@ the normalized payload is the shared
 - accept zero normalized blocks after stripping that entry;
 - return `Vec<SharedNodeBlock>`; a parallel hash vector is unnecessary.
 
+Unequal vectors, an empty raw response, a first hash other than `low_hash`, a
+hash/block disagreement, or any duplicate is
+`RecoveryInputInvalid(MalformedGetBlocks)` when encountered by the recovery
+pump. A valid anchor-only response that normalizes to zero blocks is not
+malformed.
+
 KGI requests full RPC blocks directly. Fetching hashes and then calling
 `GetBlock` one by one has no accepted benefit for this local-node deployment.
 DependencyResolver uses individual `GetBlock` calls for missing dependencies
@@ -228,3 +234,45 @@ shorten `added`, but only to a complete prefix. The PUAR checks these upstream
 assumptions against the reference revision; KGI-owned request construction and
 response handling are covered by
 [verification.md](verification.md#nodeservice-and-rpc-behavior).
+
+For recovery VSPC V2, a fully empty response is a valid pump hint. Classify
+response violations precisely:
+
+```text
+empty added with nonempty removed -> RemovedChainWithoutAddedPath
+added.last() equals low_hash      -> NonAdvancingAddedCursor
+duplicate within either vector    -> DuplicateChainMember
+hash present in both vectors      -> RemovedAddedIntersection
+```
+
+Each is
+`RecoveryInputInvalid(MalformedVspcResponse(reason))` and follows the shared
+malformed recovery-response policy.
+
+During Resync preparation, `GetBlock(sink_hash, false)` must return exactly the
+requested hash and the header data required to construct
+`MaterializedSyncAnchor`. A different hash or missing required GhostDAG header
+data is `RecoveryInputInvalid(MalformedGetBlock)`. A definitive not-found
+response and a returned DAA score that disagrees with committed storage remain
+reconciliation evidence under the processing-lifecycle contract rather than
+malformed transport shapes.
+
+### Runtime protocol violation and generation retirement
+
+`ValidatedRpcClient` recognizes malformed raw recovery RPC responses while
+validating and normalizing them and returns the typed violation without a
+normalized value. The calling recovery owner reports that violation to
+NodeService before reporting its owner-directed fault. NodeService atomically
+retires that exact published
+`ValidatedRpcClient`, retires its NotificationRouter, prevents all clones from
+starting further RPC or subscription work, closes the physical connection, and
+enters `Unavailable`. A stale report for a generation already replaced cannot
+retire the replacement. NodeService reconnects and performs complete validation
+before publishing another generation.
+
+The malformed response is never retried in place. Supervisor owns the shared
+cross-generation retry budget and Fatal threshold defined by the
+[processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled).
+Malformed Genesis-discovery output occurs before a validated generation is
+published and remains an ordinary NodeService validation failure under its
+connection backoff; it does not consume this runtime malformed-input budget.

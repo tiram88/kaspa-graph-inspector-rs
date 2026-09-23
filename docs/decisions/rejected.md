@@ -12,7 +12,7 @@ defines the operative behavior.
 | Use broad notification epochs or a timer-based latecomer grace period. | Transport packets cannot be assigned reliable epochs; Begin/Catchup gates and objective lower bounds handle late delivery. |
 | Use local or adjacent GetBlocks order decrease as a Catchup trigger. | Only the complete page's global maximum position participates in the accepted order fallback. |
 | Add a dedicated mixed-view recovery protocol for GetBlocks assembled while Virtual moves. | A material strict-processing omission uses the ordinary `Require(Resync)` path. |
-| Derive a destination from a removed-only VSPC change. | The shape violates the selected-sink invariant reviewed through the [PUAR](../architecture/verification.md#pinned-upstream-assumption-review-policy) and follows source-specific recovery policy. |
+| Derive a destination from a VSPC change with a nonempty removed chain and an empty added path. | The shape violates the selected-sink invariant reviewed through the [PUAR](../architecture/verification.md#pinned-upstream-assumption-review-policy) and follows source-specific recovery policy. |
 | Admit a wholly empty `VirtualChainChanged` to VspcProcessor. | NodeService drops this valid no-op before bounded delivery. |
 | Enable local routing before both remote subscriptions start. | Routing remains Disabled through both starts; activation callbacks are intentionally dropped. |
 | Require zero unresolved orphans before Live. | Valid queued and orphan dependency work may remain after gapless admission. |

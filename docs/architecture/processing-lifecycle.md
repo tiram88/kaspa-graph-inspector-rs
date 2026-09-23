@@ -105,10 +105,16 @@ enum Component {
 }
 enum ServiceKind { Node, Storage }
 enum NotificationStream { BlockAdded, Vspc, Both }
+enum MalformedVspcResponseReason {
+    RemovedChainWithoutAddedPath,
+    NonAdvancingAddedCursor,
+    DuplicateChainMember,
+    RemovedAddedIntersection,
+}
 enum RecoveryInputKind {
-    RemovedOnlySyntheticVspc,
+    MalformedGetBlock,
     MalformedGetBlocks,
-    MalformedVspcResponse,
+    MalformedVspcResponse(MalformedVspcResponseReason),
 }
 enum PersistenceFault {
     DefiniteFailure,
@@ -171,14 +177,23 @@ obligation. Generation loss waits for the corresponding service reconnect
 loop without adding this delay. `Require(Resync)` and `Require(Rebuild)` do not
 consume or wait on the Retry sequence. All waits are lifecycle-cancellable.
 
-For the typed synthetic removed-only VSPC fault, Supervisor retains a counter
-across attempts on the same `ValidatedRpcClient` generation. The first three
-occurrences each produce `Retry`; the fourth is `Fatal`. A new validated RPC
-generation or `EnteredLive` resets it; changing recovery mode on the same
-generation does not. Removed-only notifications require Resync and do not
-consume this pump-specific budget.
-The three permitted retries use the first three general recovery delay slots:
-nominally `1s`, `2s`, and `4s`, with the same equal jitter.
+Malformed recovery RPC responses use a separate shared budget across
+`MalformedGetBlock`, `MalformedGetBlocks`, and every
+`MalformedVspcResponse` reason. Every occurrence first retires the exact
+`ValidatedRpcClient` generation that produced it and discards the response
+without advancing a cursor or sending processor input. The first three
+occurrences before `EnteredLive` each abort the complete attempt with `Retry`;
+the fourth is `Fatal`. The counter is shared across all three kinds and VSPC
+reasons and survives replacement RPC generations, so reconnecting repeatedly
+to the same incompatible node cannot loop forever. Only `EnteredLive` resets
+it; a new RPC generation or stronger recovery mode does not.
+
+Each permitted malformed-input Retry waits for NodeService to publish a new
+validated RPC generation and never reuses or reissues the operation on the
+retired handle. NodeService's reconnect backoff supplies the delay, so the
+general recovery Retry delay is not added. A removed-chain-without-added-path
+notification remains source-specific: it requires Resync and does not consume
+the malformed recovery-response budget.
 
 Storage owns local transaction retries and ambiguous-outcome handling; see
 [storage.md](storage.md#transaction-retries). Once classified across the
@@ -336,14 +351,16 @@ younger than `anticone_finalization_depth`; every other reconciliation check
 above still applies. `Empty` remains distinct because it has no PP or committed
 sink despite also storing `db_pp_blue_score = 0`.
 
-A missing or inconsistent stored sink, a definitive absent/invalid response
-from the node, a stored/returned DAA-score mismatch, or another failed
-reconciliation check reports `Require(Rebuild)` to Supervisor. A transport
-failure, cancellation, connection loss, or validated-client loss is instead a
-session fault/retry and does not prove that Rebuild is required. A returned
-hash other than the requested sink is a malformed RPC response and a
-protocol/session fault. Rebuild occurs as a separate run; there is no internal
-Auto fallback.
+A missing or inconsistent stored sink, a definitive absent response from the
+node, a stored/returned DAA-score mismatch, or another failed reconciliation
+check reports `Require(Rebuild)` to Supervisor. A transport failure,
+cancellation, connection loss, or validated-client loss is instead a session
+fault/retry and does not prove that Rebuild is required. A response whose hash
+differs from the requested sink, or whose header lacks the GhostDAG data needed
+to construct the anchor, is
+`RecoveryInputInvalid(MalformedGetBlock)`: retire that RPC generation and use
+the bounded malformed-recovery-input policy above. Rebuild occurs as a
+separate run; there is no internal Auto fallback.
 
 ### Rebuild preparation
 
@@ -405,9 +422,10 @@ response. It obtains both through the exact
 pinned VSPC request arguments and advancing-cursor assumption. An empty V2
 page is a pump/Catchup hint, not a VSPC change.
 A response with empty `added` and nonempty `removed` violates the pinned sink
-monotonicity invariant. Do not dispatch it or advance the cursor; abort the
-complete recovery attempt using the bounded synthetic removed-only `Retry`
-policy above.
+monotonicity invariant. `ValidatedRpcClient` rejects it as
+`MalformedVspcResponse(RemovedChainWithoutAddedPath)` without returning a
+normalized change. ResyncEngine therefore dispatches nothing, does not advance
+the cursor, and follows the shared malformed recovery-response policy above.
 
 Both synthetic streams start from the committed `MaterializedSyncAnchor` sink:
 

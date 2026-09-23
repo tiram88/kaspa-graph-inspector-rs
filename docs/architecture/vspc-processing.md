@@ -31,12 +31,16 @@ the [domain model](domain-model.md#vspc-value-types--settled). Pending changes
 store `VspcChange` directly; there is no `PendingVspcChange` wrapper or
 `ReadyAddedBlock`.
 
-Every admitted nonempty change has a nonempty `added` vector. A removed-only
-change is impossible under the selected-sink monotonicity assumption reviewed
-by the [PUAR](verification.md#pinned-upstream-assumption-review-policy) and has
-no invented fallback destination. NodeService rejects that notification shape
-with `Require(Resync)`. The synthetic pump rejects it under the bounded typed
-Retry policy. Neither source admits it to VspcProcessor.
+Every admitted nonempty change has a nonempty `added` vector. A change with a
+nonempty removed chain and an empty added path is impossible under the
+selected-sink monotonicity assumption reviewed by the
+[PUAR](verification.md#pinned-upstream-assumption-review-policy) and has no
+invented fallback destination. NodeService rejects that notification shape with
+`Require(Resync)`. For a synthetic VSPC V2 response, `ValidatedRpcClient`
+rejects the same shape as
+`MalformedVspcResponse(RemovedChainWithoutAddedPath)` without returning a
+normalized change. ResyncEngine follows the shared malformed recovery-response
+policy. Neither source admits it to VspcProcessor.
 
 NodeService also discards a raw notification with both vectors empty before
 constructing or sending `VspcChange`. It earns no overlap credit and consumes
