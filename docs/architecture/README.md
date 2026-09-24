@@ -65,30 +65,26 @@ restating it.
 | `web.md` | Browser client behavior and presentation requirements. |
 | `verification.md` | Required fixtures, integration scenarios, acceptance checks, and upstream assumptions. It references contracts without redefining them. |
 
-## Ownership rules
+## Architecture ownership map
 
-The architecture follows these rules:
+The project-wide [single ownership policy](../../AGENTS.md#single-ownership-policy)
+applies to every architecture change. The focused-document table above assigns
+the sole owner for each concern. The following rules resolve boundaries within
+that map:
 
-1. A behavioral rule has exactly one focused owner.
-2. Shared names and value semantics belong to `domain-model.md`; component
-   behavior using them remains with the component.
-3. A coordinating component owns cross-component ordering and lifecycle
-   transitions. Component-local reactions remain with that component.
-4. Storage owns transaction, durability, schema, and cache-publication
-   semantics even when another component requests the operation.
-5. `processing-lifecycle.md` owns recovery phase changes. For example, it owns
-   entry into Catchup and Live, while `vspc-processing.md` owns how
-   VspcProcessor behaves in those phases.
-6. Verification requirements live in `verification.md` and point to the
-   contract under test. They do not restate that contract as a second source.
-7. The decision registers record each item's status, summarize what was
-   decided or remains unresolved, and link to its focused owner. The focused
-   owner is the durable source of the complete current contract and the
-   rationale needed to interpret it. Standalone ADRs may preserve historical
-   decision rationale but do not become competing behavioral owners. Settling
-   a decision updates its focused owner in the same change.
-8. Historical handoffs and audits provide provenance only and never resolve a
-   conflict with current architecture.
+- shared names and value semantics belong to `domain-model.md`; behavior that
+  uses them belongs to the responsible component;
+- a coordinating component owns cross-component ordering and lifecycle
+  transitions, while each component owns its local reaction;
+- `storage.md` owns transaction, durability, schema, and cache-publication
+  semantics even when another component requests the operation;
+- `processing-lifecycle.md` owns recovery phase changes, while the processor
+  documents own processor behavior within each phase;
+- `verification.md` owns verification requirements and links to the contract
+  under test; and
+- decision registers, handoffs, audits, and review reports have the
+  non-behavioral roles assigned by `AGENTS.md` and do not become competing
+  architecture owners.
 
 ## Handoff coverage map
 

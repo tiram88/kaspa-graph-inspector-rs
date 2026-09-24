@@ -30,6 +30,50 @@ focused architecture and later accepted ADRs
     > implementation-status and review notes
 ```
 
+## Single ownership policy
+
+Every current normative claim has exactly one owning document. A normative
+claim includes required or prohibited behavior, state transitions and their
+ordering, validation and failure dispositions, constants and formulas,
+semantic structs or function signatures, and the rationale needed to
+interpret those contracts. The architecture index assigns focused owners by
+concern. An accepted ADR may preserve decision history, but its current
+behavior and interpretive rationale must be incorporated into the focused
+owner in the same change.
+
+A document that does not own a claim may:
+
+- name an operation, type, state, or decision owned elsewhere;
+- define only its own side of an interaction;
+- link to the owner;
+- list a verification case without redefining the behavior under test; or
+- summarize a decision's status without copying its mechanics or rationale.
+
+It must not restate the owned contract as an independent rule, add conditions
+to it, or supply behavior missing from the owner. A duplicated normative claim
+is a documentation defect even when both copies currently agree.
+
+Review reports and historical material may quote or summarize enough of a
+claim to identify the evidence or finding, but must link to the current owner
+when one exists and never become an alternate contract. Writing a report
+required by an accepted review procedure, including a Pinned Upstream
+Assumption Review, is evidence recording rather than a normative architecture
+change.
+
+For every documentation change that adds or changes a normative claim:
+
+1. identify its sole owner before editing;
+2. place the complete rule and its interpretive rationale only in that owner;
+3. replace necessary mentions elsewhere with local interaction text and a
+   link to the owner;
+4. search the repository for the affected terms and inspect every normative
+   occurrence for competing ownership; and
+5. flag any unresolved ownership conflict instead of choosing silently.
+
+Architecture fixes ownership defects in normative documents. Implementation
+must stop and report conflicting owners rather than select one. Review reports
+duplication or ambiguity as a finding and does not silently reconcile it.
+
 ## Audit material
 
 `docs/history/audits/` contains historical reconciliation evidence and working
@@ -79,7 +123,11 @@ When implementation exposes an ambiguity or conflict, stop at the architectural 
 
 ## Review role
 
-The Review role evaluates stable commits or diffs against accepted architecture, ADRs, and relevant tests. It is read-only unless explicitly asked to fix findings.
+The Review role evaluates stable commits or diffs against accepted architecture,
+ADRs, and relevant tests. It is read-only unless explicitly asked to fix
+findings. It may create the evidence report required by an accepted review
+procedure, including a PUAR, without separate authorization. That exception
+permits the report only, not edits to normative files.
 
 Review findings belong in `docs/reviews/` when a durable report is requested. Findings and review notes are evidence, not normative architecture changes.
 
