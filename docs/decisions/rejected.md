@@ -15,8 +15,8 @@ defines the operative behavior.
 | Derive a destination from a VSPC change with a nonempty removed chain and an empty added path. | The shape violates the selected-sink invariant reviewed through the [PUAR](../architecture/verification.md#pinned-upstream-assumption-review-policy) and follows source-specific recovery policy. |
 | Admit a wholly empty `VirtualChainChanged` to VspcProcessor. | NodeService drops this valid no-op before bounded delivery. |
 | Enable local routing before both remote subscriptions start. | Routing remains Disabled through both starts; activation callbacks are intentionally dropped. |
-| Require zero unresolved orphans before Live. | Valid queued and orphan dependency work may remain after gapless admission. |
-| Add a VSPC coverage phase, freeze acknowledgement, checkpoint, or synthetic-stream terminal marker. | VspcProcessor receives its existing Live command at ordinary eligibility; block coverage continues independently. |
+| Require zero unresolved orphans before Live. | Valid queued and orphan dependency work may remain after overlap-based Live admission. |
+| Add a VSPC coverage phase, freeze acknowledgement, checkpoint, or synthetic-stream terminal marker. | Synthetic production is stopped and joined before VspcProcessor receives its existing Live command; the lifecycle then proceeds directly to BlockProcessor Live. |
 | Escalate an arbitrary count of failed Resync attempts to Rebuild. | Recovery strength follows typed evidence rather than retry count. |
 | Retry services or recovery immediately or without a rate bound. | The lifecycle contracts define capped jittered schedules and terminal rejection. |
 | Transparently retry an ambiguous database commit. | Only definite `40001` and `40P01` rollbacks permit bounded whole-transaction retry. |

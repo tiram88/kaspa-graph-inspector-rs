@@ -41,21 +41,19 @@ The PUAR checklist is:
 3. The `L + 1` GetBlocks core budget, consensus-topological ordering, page
    construction, global-maximum fallback premise, and the `< 3` normalized
    length sink-reaching premise match the Catchup design.
-4. Body-tip storage is updated before the corresponding BlockAdded notification
-   is emitted, and `GetBlockDagInfo.tip_hashes` comes from that body-tip state.
-5. Virtual selected-sink behavior preserves the documented removed/added
+4. Virtual selected-sink behavior preserves the documented removed/added
    ordering, excludes changes with a nonempty removed chain and an empty added
    path, can emit the documented fully empty no-op, and never places Genesis in
    `added` or `removed`.
-6. BlockAdded duplicate and verbose-data behavior matches NodeService and
+5. BlockAdded duplicate and verbose-data behavior matches NodeService and
    BlockProcessor assumptions, including the enrichment-failure form without
    verbose data.
-7. Exact-network, unsupported-testnet fallback, and devnet/simnet override
+6. Exact-network, unsupported-testnet fallback, and devnet/simnet override
    resolution produce the documented local `bps`, `mergeset_size_limit`, and
    `anticone_finalization_depth` values. The review records that RPC exposes no
    comparison with the node's effective overrides; it does not describe these
    local values as node-validated.
-8. VSPC V2 with `min_confirmation_count = None` and
+7. VSPC V2 with `min_confirmation_count = None` and
    `RpcDataVerbosityLevel::None` preserves the documented batching, complete
    removed suffix, minimal acceptance-data envelope, complete-prefix
    shortening, and advancing cursor behavior.
@@ -267,32 +265,30 @@ Verify the [Catchup trigger](processing-lifecycle.md#catchup-trigger) with:
 Verify [phase entry](processing-lifecycle.md#entering-recovery-phases),
 [processor-local block overlap](block-processing.md#catchup-filtering-and-overlap),
 [processor-local VSPC overlap](vspc-processing.md#catchup-filtering-crossing-and-overlap--settled),
-and [global Live admission](processing-lifecycle.md#ordinary-eligibility-and-coverage-admission)
+and [global Live admission](processing-lifecycle.md#live-admission)
 together. Required cases are:
 
 1. Command priority, the Begin gate and immediate closed-gate drop, objective
    lower-bound filtering, both overlap flags, observation only at full-page
    boundaries, and Live entry while valid ordinary orphans remain.
-2. Cross-response synthetic block repeats; add to `catchup_sent` only after a
-   successful enqueue and grant no overlap credit to a filtered repeat.
+2. Cross-response synthetic block repeats; add to the Catchup-only sent-hash
+   set only after a successful enqueue and grant no overlap credit to a
+   filtered repeat. This set does not participate in Live admission.
 3. A temporary empty synthetic VSPC queue before component-local Live does not
    release a notification. The Live transition discards queued synthetic
    input and makes notifications authoritative for the rest of the session.
 4. Notification-driven VSPC sink advancement and notification changes held in
    pre-resolution readiness by unfinished block dependencies.
-5. A supplied fixed body-tip snapshot and one batch of its strictly
-   materialized subset. The PUAR owns the upstream source premises behind that
-   input.
-6. `T ⊆ M ∪ catchup_sent` with an already materialized side tip, a dropped
-   activation callback outside the then-selected past, a tip admitted on the
-   final permitted page, and a tip that remains uncovered.
-7. Coverage request starts obey the `1 / bps` minimum interval. Page caps are
-   2, 3, and 3 at 1, 10, and 32 BPS with merge-set limits 180, 248, and 512;
-   empty and fully filtered responses consume budget.
-8. Success sends BlockProcessor Live only after a complete page and emits
-   `EnteredLive` only after both processors' split Live enqueues. Cap exhaustion
-   sends no BlockProcessor Live, requests Resync, and starts the next run from
-   current committed DB state.
+5. At a complete GetBlocks-page boundary, satisfying PostSeal plus both overlap
+   flags causes the lifecycle to stop and join both synthetic producers, then
+   enqueue VspcProcessor Live before BlockProcessor Live and finally publish
+   global Live.
+6. Live admission does not call GetBlockDagInfo, wait for extra GetBlocks
+   pages, or inspect body-tip materiality. A dropped activation callback for an
+   otherwise unobserved stale body tip neither blocks Live nor requests
+   recovery.
+7. An omitted block that later appears as an admitted block dependency or a
+   VSPC chain member follows the existing dependency or recovery disposition.
 
 Verify the [fault and retry policy](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
 with injected clocks and deterministic jitter:

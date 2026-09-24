@@ -4,7 +4,7 @@
 
 This document owns Supervisor recovery intent, cross-worker commands and
 faults, ResyncEngine preparation and pumping, recovery phase transitions,
-Catchup admission, block coverage before Live, and teardown order.
+Catchup admission, overlap-based Live entry, and teardown order.
 
 It coordinates component behavior without redefining it. Node connection,
 subscription, and normalization rules belong to
@@ -476,9 +476,9 @@ Begin needs no acknowledgement. Before Catchup:
 Processor-local notification gates are authoritative for immediate dropping.
 Callbacks arriving while the router remains Disabled during activation are
 intentionally dropped without overlap credit or a recovery request. Synthetic
-pumps continue until ordinary overlap is demonstrated. Before Live, the fixed
-body-tip coverage gate below accounts for activation-time drops, including a
-block outside the selected past; there is no separate callback replay.
+pumps continue until overlap is demonstrated. There is no callback replay or
+separate body-tip coverage gate; the recovery scope is defined under
+[Live admission](#live-admission).
 
 ### Catchup trigger
 
@@ -595,7 +595,7 @@ and [vspc-processing.md](vspc-processing.md#component-local-live-transition--set
 ResyncEngine only decides when to end synthetic production and enqueue that
 component's Live command.
 
-### Ordinary eligibility and coverage admission
+### Live admission
 
 At a fully dispatched GetBlocks-page boundary:
 
@@ -605,71 +605,47 @@ PostSeal == true
 && vspc_overlap == true
 ```
 
-establishes ordinary Live eligibility. It authorizes VspcProcessor Live and
-the block-coverage phase, but not BlockProcessor Live or global `EnteredLive`.
+is the complete Live-admission predicate. It proves that both synthetic streams
+have converged with their active notification streams at a complete GetBlocks
+page boundary. It does not certify that KGI has copied the node's entire
+retained body DAG or that no callback was dropped during subscription
+activation.
 
-Stop issuing VSPC V2 calls and sending new synthetic changes, stop/join that
-producer, and successfully enqueue VspcProcessor's existing Live command
-before the first coverage request. BlockProcessor remains in Catchup.
+Once the predicate holds, perform the transition in order:
+
+1. stop issuing synthetic RPC requests and stop/join both synthetic producers;
+2. successfully enqueue VspcProcessor's existing Live command;
+3. successfully enqueue BlockProcessor's existing Live command;
+4. send ApiService the Live publication trigger; and
+5. emit `EnteredLive`.
+
 VspcProcessor's reaction and readiness behavior are defined in its focused
-contract; the coverage phase sends it no checkpoint, barrier, or coverage
-state.
+contract. BlockProcessor retains valid queued and orphan work. `EnteredLive`
+does not mean either processor's queues or dependency state are empty.
 
-Capture a fixed `GetBlockDagInfo.tip_hashes` set `T` after subscriptions are
-Enabled and determine in one batch its strictly materialized subset `M`. Only
-the tip vector is the coverage snapshot; other response fields are not treated
-as one atomic combined snapshot. Do not refresh `T`. KGI relies on upstream
-ordering that commits each body-tip-store update before emitting its BlockAdded
-notification, so blocks committed after the snapshot are protected by the
-active subscription. The PUAR checks this premise against the reference
-revision.
+#### Recovery scope and omitted body tips
 
-Run at least one additional block-only GetBlocks request using the block scan's
-existing cursor. Preserve full-page dispatch and the Catchup-only dedup set.
-Request starts are separated by at least one target block interval:
+KGI v2 does not attempt to reproduce every block in the node's retained body
+DAG before entering Live. GetBlocks follows the selected-chain history, its
+merge sets, and the anticone reachable from current Virtual parents; lowering
+its `low_hash` does not make it enumerate stored body tips outside that view.
+`GetBlockDagInfo.tip_hashes` can therefore contain an unextended stale tip that
+no GetBlocks page will return.
 
-```text
-coverage_page_interval = 1 second / network_bps
-```
+Such a tip is outside KGI's required graph unless it is observed through a
+normal KGI input: GetBlocks, an Enabled BlockAdded notification, dependency
+resolution for an admitted block, or VSPC chain membership. KGI does not take a
+fixed body-tip snapshot, fetch every tip, delay Live for extra coverage pages,
+or claim body-DAG snapshot completeness. Requiring all body tips before Live
+could repeatedly request Resync for a valid tip that is intentionally outside
+the current Virtual traversal.
 
-With merge-set limit `L`, cap additional fully dispatched responses at:
-
-```text
-1 + ceil(catchup_max_daa_gap / (L + 1))
-```
-
-The resulting current caps are 2, 3, and 3 pages at 1, 10, and 32 BPS, using
-rusty-kaspa merge-set limits 180, 248, and 512 for the reference revision.
-Empty and fully filtered responses consume budget. The cap is operational and
-does not claim a mathematical DAA advance per page.
-
-After each complete page, Live admission requires:
-
-```text
-T ⊆ M ∪ catchup_sent
-```
-
-This establishes gapless admission: every retained pre-snapshot body tip is
-materialized or has entered BlockProcessor, so missing ancestry will become
-explicit queued/orphan dependency work. It does not require those blocks or
-orphans to finish before Live. If the cap is exhausted without satisfying the
-invariant, request `Require(Resync)`. The next recovery attempt derives its
-starting sink from current committed database state.
-
-On Live:
-
-- VspcProcessor has already received Live at ordinary eligibility;
-- stop and join the block coverage producer before sending BlockProcessor
-  Live;
-- BlockProcessor retains valid queued/orphan work.
-
-`EnteredLive` is emitted only after the block coverage producer is
-stopped/joined, the earlier VspcProcessor Live enqueue succeeded, and
-BlockProcessor Live is successfully enqueued. It does not mean queues or
-orphan state are empty. At this same lifecycle point, ResyncEngine sends
-ApiService the Live publication trigger. If coverage exhausts its budget, do
-not send BlockProcessor Live; request Resync and deactivate the component-local
-VSPC Live run normally.
+If an earlier omitted block later becomes required, the existing mechanisms
+apply: BlockProcessor dependency resolution obtains missing ancestry;
+resolver-confirmed unavailability requests Rebuild; a nonmaterialized VSPC
+chain member requests Rebuild; and ordinary processing or transport invariant
+failures request their settled recovery disposition. Live admission relies on
+those mechanisms rather than a separate tip-coverage proof.
 
 Normal processor and stream invariants remain active in Live and request their
 settled recovery dispositions when violated.

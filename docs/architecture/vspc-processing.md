@@ -231,9 +231,9 @@ eligibility predicate.
 
 ## Component-local Live transition — settled
 
-At ordinary eligibility, the processing lifecycle stops and joins synthetic
-VSPC production before sending VspcProcessor its existing exact-once `Live`
-command. VspcProcessor then:
+At global Live eligibility, the processing lifecycle stops and joins synthetic
+production before sending VspcProcessor its existing exact-once `Live` command
+ahead of BlockProcessor's Live command. VspcProcessor then:
 
 1. clears or discards queued synthetic input;
 2. ignores later synthetic input for the rest of the session;
@@ -241,8 +241,9 @@ command. VspcProcessor then:
 4. makes retained and new actionable notifications authoritative.
 
 This is VspcProcessor's existing Live phase, not an additional coverage phase,
-terminal marker, checkpoint, or barrier. BlockProcessor can remain in Catchup
-while the lifecycle performs body-tip coverage.
+terminal marker, checkpoint, or barrier. There is no subsequent body-tip
+coverage phase; the lifecycle proceeds directly to BlockProcessor Live and
+global `EnteredLive`.
 
 Available block material lets notification-driven sink advancement continue.
 A notification whose needed block material has not arrived remains in
@@ -250,11 +251,6 @@ pre-resolution readiness while block processing and dependency resolution
 continue. This waiting occurs before strict materiality resolution and does
 not weaken the direct Rebuild fault when an actionable transition confirms a
 nonmaterialized chain member.
-
-If later block coverage exhausts its page budget, the lifecycle requests
-Resync and deactivates the session. Recovery derives its next starting sink
-from the database state actually committed by VspcProcessor; there is no
-coverage checkpoint.
 
 ## Commit and graph publication — settled
 

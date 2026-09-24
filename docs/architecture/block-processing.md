@@ -165,8 +165,10 @@ A hash admitted from both sources proves block overlap and sets the flag.
 A second BlockAdded for the same hash within one subscription is an invariant
 fault. GetBlocks hashes may repeat across responses, so ResyncEngine filters
 synthetic repeats before dispatch; a filtered repeat earns no overlap credit.
-The engine-owned `catchup_sent` set and complete-page observation rules belong
-to the [processing lifecycle](processing-lifecycle.md).
+The engine-owned Catchup-only sent-hash set exists only for that repeat
+filtering. It is not a body-tip coverage set or an additional Live-admission
+condition. Complete-page observation rules belong to the
+[processing lifecycle](processing-lifecycle.md).
 
 ### Committed block delivery
 
@@ -229,11 +231,12 @@ inputs. As a rule of thumb, when occupancy reaches roughly one quarter to one
 third of capacity, request frontier hashes to maximize release. Exact capacity
 and threshold remain implementation choices.
 
-An isolated orphan below the threshold is acceptable. Silent notification
-loss is not a normal assumption: connection loss or a full notification
-channel requests recovery, while callbacks intentionally dropped during
-subscription activation are covered by the lifecycle's fixed body-tip gate.
-No independent age fallback is required.
+An isolated orphan below the threshold is acceptable. Connection loss or a
+full notification channel requests recovery. Callbacks intentionally dropped
+during subscription activation are not replayed and do not create a separate
+body-tip coverage obligation. If an omitted block later becomes a dependency
+of an admitted block, normal dependency resolution exposes it. No independent
+age fallback is required.
 
 ## DependencyResolver — settled
 
