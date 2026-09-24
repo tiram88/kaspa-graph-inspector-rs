@@ -233,11 +233,13 @@ database generation or epoch is persisted; validated-client lifetime provides
 that boundary.
 
 Node server and RPC versions, node endpoint, current node PP and IBD state, and
-consensus parameters are observational runtime information. They never
-participate in database compatibility, reconciliation, or recovery decisions
-and are not stored in `NodeMetadata`. ApiService obtains the currently
-validated node server version from NodeService without requiring last-observed
-node metadata in PostgreSQL.
+consensus parameters are observational runtime information and are not stored
+in `NodeMetadata`. They do not participate in database compatibility: only the
+immutable `(network_id, genesis_hash)` binding does. The processing lifecycle
+does use the current node PP and the current session's consensus parameters for
+reconciliation and recovery without persisting them as node metadata.
+ApiService obtains the currently validated node server version from NodeService
+without requiring last-observed node metadata in PostgreSQL.
 
 An initialized database whose PP hash equals `NodeMetadata.genesis_hash` is a
 valid Genesis anchor only when all of these invariants hold:
@@ -824,10 +826,14 @@ level-score changes.
 ```rust
 enum ReconciliationState {
     Empty,
+    NodePpNotBoundaryMaterialized {
+        hash: BlockHash,
+    },
     Existing(ReconciliationSnapshot),
 }
 
 struct ReconciliationSnapshot {
+    node_pp: StoredBlockPoint,
     db_pp: StoredBlockPoint,
     db_pp_blue_score: u64,
     committed_vspc_sink: StoredVspcSink,
@@ -849,6 +855,7 @@ struct StoredVspcSink {
 impl ValidatedDbClient {
     async fn reconciliation_snapshot(
         &self,
+        current_node_pp: BlockHash,
     ) -> Result<ReconciliationState, StorageError>;
 }
 ```
@@ -858,13 +865,22 @@ conceptual `load_reconciliation_state` name. One read-only transaction locates
 the database PP exclusively at `(level=1, slot=0)`, reads
 `NodeMetadata.db_pp_blue_score`, derives the committed sink as the maximum-ID
 materialized VSPC block, resolves its selected-parent hash, and verifies that
-the PP and sink are materialized and mutually coherent.
+the PP and sink are materialized and mutually coherent. For an initialized
+database it also resolves the supplied current node PP and proves
+`BoundaryMaterialized(current_node_pp)` in that same snapshot: the block must
+be materialized and its retained parent and merge-set references must close
+through materialized blocks up to the valid PP boundary, where permanent
+`BoundaryIdentity` references are permitted.
 
 Return `Empty` only for the coherent network-bound Empty state. Inconsistent
 combinations return a typed `StorageError` rather than an incomplete snapshot.
-The result contains no node-derived blue work or blue score. ResyncEngine uses
-the run's exact validated RPC generation to enrich and validate the stored sink
-before constructing `MaterializedSyncAnchor`.
+Return `NodePpNotBoundaryMaterialized` when the supplied hash
+is absent, identity-only, or fails the retained-past proof; this is
+reconciliation evidence rather than an operational storage failure. `Existing`
+includes the proven materialized node PP as `node_pp`. The result contains no
+node-derived blue work or blue score. ResyncEngine uses the run's exact
+validated RPC generation to enrich and validate the stored sink before
+constructing `MaterializedSyncAnchor`.
 
 ## Historical read contracts — settled
 

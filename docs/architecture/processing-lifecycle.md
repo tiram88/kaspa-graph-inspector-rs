@@ -112,6 +112,7 @@ enum MalformedVspcResponseReason {
     RemovedAddedIntersection,
 }
 enum RecoveryInputKind {
+    MalformedPruningPointResponse,
     MalformedGetBlock,
     MalformedGetBlocks,
     MalformedVspcResponse(MalformedVspcResponseReason),
@@ -178,15 +179,16 @@ loop without adding this delay. `Require(Resync)` and `Require(Rebuild)` do not
 consume or wait on the Retry sequence. All waits are lifecycle-cancellable.
 
 Malformed recovery RPC responses use a separate shared budget across
-`MalformedGetBlock`, `MalformedGetBlocks`, and every
-`MalformedVspcResponse` reason. Every occurrence first retires the exact
+`MalformedPruningPointResponse`, `MalformedGetBlock`, `MalformedGetBlocks`, and
+every `MalformedVspcResponse` reason. Every occurrence first retires the exact
 `ValidatedRpcClient` generation that produced it and discards the response
 without advancing a cursor or sending processor input. The first three
 occurrences before `EnteredLive` each abort the complete attempt with `Retry`;
-the fourth is `Fatal`. The counter is shared across all three kinds and VSPC
-reasons and survives replacement RPC generations, so reconnecting repeatedly
-to the same incompatible node cannot loop forever. Only `EnteredLive` resets
-it; a new RPC generation or stronger recovery mode does not.
+the fourth is `Fatal`. The counter is shared across all recovery-input kinds
+and VSPC reasons and survives replacement RPC generations, so reconnecting
+repeatedly to the same incompatible node cannot loop forever. Only
+`EnteredLive` resets it; a new RPC generation or stronger recovery mode does
+not.
 
 Each permitted malformed-input Retry waits for NodeService to publish a new
 validated RPC generation and never reuses or reissues the operation on the
@@ -301,30 +303,29 @@ only material difference is storage policy before PP-boundary sealing.
 
 ### Resync preparation
 
-ResyncEngine calls
-`ValidatedDbClient::reconciliation_snapshot()`. Storage reconciliation obtains:
-
-- database PP at `(level = 1, slot = 0)`;
-- `db_pp_blue_score` from metadata;
-- committed materialized VSPC sink derived as the maximum-ID materialized
-  block with `is_in_vspc = true`, including its ID, hash, selected-parent hash,
-  and stored DAA score.
-
-The storage query and committed-sink derivation are defined in
-[storage.md](storage.md#reconciliation-snapshot--settled). ResyncEngine owns
-the orchestration and node-side validation below.
+ResyncEngine first calls
+`ValidatedRpcClient::current_pruning_point_block()` on the run's exact RPC
+generation. It then passes that block's hash to
+`ValidatedDbClient::reconciliation_snapshot(current_node_pp)`. The
+[storage contract](storage.md#reconciliation-snapshot--settled) solely owns the
+returned state and snapshot shapes, database reads, committed-sink derivation,
+and `BoundaryMaterialized` proof. ResyncEngine owns the call ordering, result
+dispositions, and node-side validation below; it does not reconstruct the
+storage proof.
 
 An Empty state is genuinely fully empty and requests a distinct Rebuild run
-because PP, score, and sink are absent. A valid schema with inconsistent
-processing contents also requests Rebuild but is not treated as Empty.
+because PP, score, and sink are absent. A
+`NodePpNotBoundaryMaterialized` result also requests Rebuild. A valid schema
+with inconsistent processing contents likewise requests Rebuild but is not
+treated as Empty.
 
-ResyncEngine uses the run's exact `Arc<ValidatedRpcClient>` to call
-`GetBlock(sink_hash, include_transactions = false)`. It requires the returned
-header hash to equal the requested sink hash and its DAA score to equal the
-stored sink DAA score. It then constructs `MaterializedSyncAnchor` from the
-stored ID, hash, and selected-parent hash plus the header's blue work and blue
-score. A header-only node block is sufficient because no body or transactions
-are needed. KGI relies on successful GetBlock GhostDAG enrichment also
+ResyncEngine uses the run's exact `Arc<ValidatedRpcClient>` and the normalized
+[individual recovery GetBlock](node-service.md#individual-recovery-getblock)
+contract to obtain the sink header. It compares the returned DAA score with the
+stored sink DAA score, then constructs `MaterializedSyncAnchor` from the stored
+ID, hash, and selected-parent hash plus the header's blue work and blue score.
+A header-only node block is sufficient because no body or transactions are
+needed. KGI relies on successful GetBlock GhostDAG enrichment also
 establishing the recognition required to use the sink as a GetBlocks
 `low_hash`; the
 [PUAR](verification.md#pinned-upstream-assumption-review-policy) checks that
@@ -332,7 +333,8 @@ upstream assumption against the reference revision.
 
 Resync requirements:
 
-1. The current node PP is boundary-materialized in the database.
+1. The current node PP returned by the run's exact validated RPC generation is
+   `BoundaryMaterialized` in the database snapshot.
 2. The node recognizes the committed materialized VSPC sink used as `low_hash`.
 3. `sink.blue_score >= db_boundary_seal_blue_score`, where:
 
@@ -351,22 +353,27 @@ younger than `anticone_finalization_depth`; every other reconciliation check
 above still applies. `Empty` remains distinct because it has no PP or committed
 sink despite also storing `db_pp_blue_score = 0`.
 
+The threshold uses `anticone_finalization_depth` from the run's exact
+`ValidatedNodeInfo.consensus`. It is current-session recovery input, not
+persisted node metadata or a database-compatibility field.
+
 A missing or inconsistent stored sink, a definitive absent response from the
 node, a stored/returned DAA-score mismatch, or another failed reconciliation
 check reports `Require(Rebuild)` to Supervisor. A transport failure,
 cancellation, connection loss, or validated-client loss is instead a session
-fault/retry and does not prove that Rebuild is required. A response whose hash
-differs from the requested sink, or whose header lacks the GhostDAG data needed
-to construct the anchor, is
-`RecoveryInputInvalid(MalformedGetBlock)`: retire that RPC generation and use
-the bounded malformed-recovery-input policy above. Rebuild occurs as a
-separate run; there is no internal Auto fallback.
+fault/retry and does not prove that Rebuild is required. NodeService owns
+classification of a malformed GetBlock response as
+`RecoveryInputInvalid(MalformedGetBlock)`; ResyncEngine applies the bounded
+malformed-recovery-input policy above. Rebuild occurs as a separate run; there
+is no internal Auto fallback.
 
 ### Rebuild preparation
 
-ResyncEngine obtains the mandatory current pruning-point block from the run's
-validated RPC generation, then calls the only storage API that clears
-processing data:
+ResyncEngine obtains the mandatory current pruning-point block once through
+`ValidatedRpcClient::current_pruning_point_block()` on the Rebuild run's exact
+validated RPC generation. After the API Reset barrier it passes that same
+validated `SharedNodeBlock` to the only storage API that clears processing
+data:
 
 ```rust
 let anchor = db.rebuild_from_pruning_point(pp).await?;

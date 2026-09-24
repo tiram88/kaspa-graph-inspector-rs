@@ -263,6 +263,39 @@ the normalized payload is the shared
 
 ### RPC normalization
 
+#### Current pruning-point block
+
+The current pruning point is obtained through one normalized composite
+operation on the run's exact validated generation:
+
+```rust
+impl ValidatedRpcClient {
+    async fn current_pruning_point_block(
+        &self,
+    ) -> Result<SharedNodeBlock, NodeError>;
+}
+```
+
+The operation calls `GetBlockDagInfo`, requires the response network to equal
+`ValidatedNodeInfo.network_id`, reads a non-ORIGIN `pruning_point_hash`, and
+then calls `GetBlock(pruning_point_hash, include_transactions = false)` on the
+same generation. The returned block hash must equal `pruning_point_hash`, and
+the header plus verbose data must supply the direct parents, selected parent,
+ordered blue/red merge sets, DAA score, blue score, and blue work required by
+reconciliation and `rebuild_from_pruning_point`. Transactions are not required.
+The [processing lifecycle](processing-lifecycle.md) owns when Resync and Rebuild
+invoke this operation and how they consume its normalized result.
+
+A mismatched response network, ORIGIN pruning-point hash, wrong returned block
+hash, definitive not-found for the advertised pruning point, or missing required
+block fields is
+`RecoveryInputInvalid(MalformedPruningPointResponse)`. The exact validated RPC
+generation is retired and the shared malformed recovery-input policy applies.
+A transport failure, cancellation, or generation loss remains a session fault
+and does not establish a reconciliation mismatch.
+
+#### GetBlocks and VSPC recovery responses
+
 `get_blocks(low_hash, include_blocks = true)` is normalized inside NodeService:
 
 - raw hash and block vectors must have equal length;
@@ -309,6 +342,8 @@ hash present in both vectors      -> RemovedAddedIntersection
 Each is
 `RecoveryInputInvalid(MalformedVspcResponse(reason))` and follows the shared
 malformed recovery-response policy.
+
+#### Individual recovery GetBlock
 
 During Resync preparation, `GetBlock(sink_hash, false)` must return exactly the
 requested hash and the header data required to construct

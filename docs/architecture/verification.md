@@ -145,6 +145,11 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
    NodeService sends no processor command; routing remains Disabled until both
    remote starts succeed; and callbacks received during that interval are
    dropped without overlap credit or immediate recovery.
+8. Verify the
+   [current pruning-point block contract](node-service.md#current-pruning-point-block)
+   with success, every listed malformed response condition, exact-generation
+   retirement, and transport or generation loss without inferring a database
+   mismatch.
 
 Use injected clocks and deterministic jitter to verify the independent
 [NodeService](node-service.md#nodeservice--settled) and
@@ -208,6 +213,11 @@ and [rebuild transaction](storage.md#rebuild-transaction--settled) with:
     rows have no foreign keys or cascade semantics; merge-set IDs validate
     transactionally; and coordinate uniqueness plus `levels.size` updates are
     enforced in the insertion transaction.
+12. Verify the
+    [reconciliation snapshot](storage.md#reconciliation-snapshot--settled) with
+    `Existing` including its proven `node_pp`, each documented
+    `NodePpNotBoundaryMaterialized` case, coherent Empty, inconsistent contents,
+    and operational storage failure as distinct outcomes.
 
 Verify the [block materialization transaction](storage.md#block-materialization-transaction--settled)
 and [PP seal behavior](block-processing.md#pp-boundary-phase-behavior--settled)
@@ -235,19 +245,29 @@ through 100% jitter range.
 ## Recovery lifecycle and Catchup
 
 Verify [Resync preparation](processing-lifecycle.md#resync-preparation) with
-fixtures that combine stored sink ID/hash/selected-parent hash/DAA score with
-an exact no-transactions GetBlock header. Cover:
+fixtures that combine the normalized current pruning-point block, its
+boundary-materiality result, stored sink ID/hash/selected-parent hash/DAA score,
+and an exact no-transactions GetBlock header. Cover:
 
+- exact current-node-PP discovery and successful boundary-materiality proof;
 - successful `MaterializedSyncAnchor` construction, including a header-only
   node block;
 - exact propagation into both processor Begin payloads, including
   VspcProcessor initialization of its committed sink and history seed;
 - a definitively absent sink, incoherent stored sink, and a DAA mismatch
   requiring Rebuild;
+- an absent, identity-only, or retained-past-incomplete current node PP
+  requiring Rebuild without retiring the valid RPC generation;
 - transport or session failure without inferring Rebuild; and
 - a response carrying the wrong hash or missing required GhostDAG header data
   as `MalformedGetBlock`, retiring the exact RPC generation without inferring
   Rebuild.
+
+Verify Rebuild obtains one normalized current pruning-point block, completes
+the API Reset barrier, and passes that same `SharedNodeBlock` to
+`rebuild_from_pruning_point` rather than rediscovering it or mixing RPC
+generations. Malformed pruning-point responses use the shared malformed-input
+budget; transport and generation loss retain their session-fault disposition.
 
 Also cover a coherent Genesis-anchored database below anticone finalization
 depth, Empty-versus-Genesis discrimination, exact node/database
@@ -294,10 +314,10 @@ together. Required cases are:
    flags causes the lifecycle to stop and join both synthetic producers, then
    enqueue VspcProcessor Live before BlockProcessor Live and finally publish
    global Live.
-6. Live admission does not call GetBlockDagInfo, wait for extra GetBlocks
-   pages, or inspect body-tip materiality. A dropped activation callback for an
-   otherwise unobserved stale body tip neither blocks Live nor requests
-   recovery.
+6. Live admission makes no additional GetBlockDagInfo call for body-tip
+   coverage, waits for no extra GetBlocks page, and does not inspect body-tip
+   materiality. A dropped activation callback for an otherwise unobserved stale
+   body tip neither blocks Live nor requests recovery.
 7. An omitted block that later appears as an admitted block dependency or a
    VSPC chain member follows the existing dependency or recovery disposition.
 
@@ -310,13 +330,13 @@ with injected clocks and deterministic jitter:
 - the general Retry backoff resets on Live, a new resource generation, and a
   stronger obligation;
 - recovery requirements do not consume Retry backoff;
-- one shared counter across malformed GetBlock, GetBlocks, and VSPC response
-  kinds and all VSPC reasons, including `RemovedChainWithoutAddedPath`: each of
-  the first three occurrences retires its producing generation and retries only
-  after replacement, the fourth is Fatal, replacement generations and stronger
-  recovery do not reset the counter, `EnteredLive` does reset it, and
-  NodeService reconnect delay is not combined with the general recovery Retry
-  delay; and
+- one shared counter across malformed pruning-point, GetBlock, GetBlocks, and
+  VSPC response kinds and all VSPC reasons, including
+  `RemovedChainWithoutAddedPath`: each of the first three occurrences retires
+  its producing generation and retries only after replacement, the fourth is
+  Fatal, replacement generations and stronger recovery do not reset the
+  counter, `EnteredLive` does reset it, and NodeService reconnect delay is not
+  combined with the general recovery Retry delay; and
 - typed fault kinds, never diagnostics, drive policy and counters.
 
 Verify [teardown](processing-lifecycle.md#teardown-and-delivery-semantics--settled)
