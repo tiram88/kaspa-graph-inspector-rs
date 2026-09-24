@@ -60,9 +60,9 @@ and orphan work; it does not certify empty worker queues.
 The observed retained PP anticone is complete enough for KGI visualization,
 without claiming to contain every mathematical anticone block. Boundary
 identity and ORIGIN semantics belong to the
-[domain model](domain-model.md#pruning-point-boundary-and-origin--settled);
-BlockProcessor never creates placeholder block rows or promotes boundary
-identities.
+[domain model](domain-model.md#pruning-point-boundary-and-origin--settled), and
+their identity-only persistence belongs to
+[storage](storage.md#persistent-representation--settled).
 
 ## BlockProcessor — settled
 
@@ -121,12 +121,9 @@ calls `ValidatedDbClient::block_presence(block_hash)`:
 - a permanent boundary identity used as the incoming block is an invariant
   violation.
 
-The earlier conceptual `check_block_materiality()` Boolean is superseded by
-this three-state lookup. There is no separate public
-`resolve_materialized_dependencies()` storage operation: reference validation
-and complete missing-reference reporting occur inside the atomic
-`ValidatedDbClient::materialize_block(block, policy)` transaction. This avoids
-splitting readiness from the commit that relies on it.
+Reference validation and complete missing-reference reporting occur inside the
+atomic `ValidatedDbClient::materialize_block(block, policy)` transaction. This
+avoids splitting readiness from the commit that relies on it.
 
 PreSeal boundary absences are accepted only through
 `AllowBoundaryIdentities`. Strict pre-Catchup missing material requires
@@ -165,9 +162,7 @@ A hash admitted from both sources proves block overlap and sets the flag.
 A second BlockAdded for the same hash within one subscription is an invariant
 fault. GetBlocks hashes may repeat across responses, so ResyncEngine filters
 synthetic repeats before dispatch; a filtered repeat earns no overlap credit.
-The engine-owned Catchup-only sent-hash set exists only for that repeat
-filtering. It is not a body-tip coverage set or an additional Live-admission
-condition. Complete-page observation rules belong to the
+Complete-page observation and synthetic repeat-filtering rules belong to the
 [processing lifecycle](processing-lifecycle.md).
 
 ### Committed block delivery
@@ -227,16 +222,17 @@ hash in `resolution_pending` until OrphanManager observes `AddOrphan` or
 request gap before BlockProcessor accounts for the result.
 
 Dependency selection uses orphan topology only. Age and DAA score are not
-inputs. As a rule of thumb, when occupancy reaches roughly one quarter to one
-third of capacity, request frontier hashes to maximize release. Exact capacity
-and threshold remain implementation choices.
+inputs. When occupancy reaches a configured threshold in the approximate range
+from one quarter through one third of capacity, request frontier hashes to
+maximize release. Exact processor-channel and orphan capacities, resolver
+concurrency, and the orphan threshold remain deferred in the
+[decision register](../decisions/deferred.md).
 
 An isolated orphan below the threshold is acceptable. Connection loss or a
 full notification channel requests recovery. Callbacks intentionally dropped
-during subscription activation are not replayed and do not create a separate
-body-tip coverage obligation. If an omitted block later becomes a dependency
-of an admitted block, normal dependency resolution exposes it. No independent
-age fallback is required.
+during subscription activation are not replayed. If an omitted block later
+becomes a dependency of an admitted block, normal dependency resolution
+exposes it. No independent age fallback is required.
 
 ## DependencyResolver — settled
 
@@ -256,8 +252,7 @@ notification lane. The resolver validates that GetBlock returned the
 requested hash.
 
 `resolution_pending` remains set until the manager observes `AddOrphan` or
-`BlockPersisted`; there is no separate `Satisfied(hash)` queue protocol. It is
-a set, not a queue or map.
+`BlockPersisted`. It is a set, not a queue or map.
 
 A resolver-confirmed unavailable dependency requests `Require(Rebuild)`
 because retained database contents can no longer be trusted against node

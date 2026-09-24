@@ -13,14 +13,19 @@ are accepted; do not introduce them implicitly during implementation.
 - administrative/API-triggered recovery through Supervisor;
 - investigate deterministic per-level slot ordering derived from block data,
   aiming for stable coordinates where instances share the same retained DAG;
-  v2 retains allocation order, and the ordering and migration consequences
-  need a separate design;
+  the [domain model](architecture/domain-model.md#shared-value-types--settled)
+  owns current coordinate semantics, and the ordering and migration
+  consequences need a separate design;
 - an explicit offline administrative import from a KGI v1 database into a
-  separate KGI v2 database, not an in-place migration; network validation,
-  resumability, and transactional publication remain to be designed;
+  separate KGI v2 database; the
+  [storage contract](architecture/storage.md#database-bootstrap-and-validation--settled)
+  owns current startup behavior, while network validation, resumability, and
+  transactional publication remain to be designed. Any future migration that
+  cannot be transactional must likewise be an explicit offline administrative
+  operation;
 - historical graph-window response caching, if usage measurements justify it;
-  v2 serves historical windows with indexed, width-capped database reads and
-  does not cache their responses. Any future cache must account for VSPC reorgs
-  and graph changes within one API publication epoch;
+  the [API contract](architecture/api.md#daa-navigation-and-graph-windows--settled)
+  owns current behavior, and any future cache must account for VSPC reorgs and
+  graph changes within one API publication epoch;
 - other improvements must be recorded explicitly rather than silently entering
   the v2 implementation.

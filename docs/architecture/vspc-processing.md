@@ -28,8 +28,7 @@ destination = added.last()
 
 The shared `VspcChange` and `ReadyVspcChange` representations are defined in
 the [domain model](domain-model.md#vspc-value-types--settled). Pending changes
-store `VspcChange` directly; there is no `PendingVspcChange` wrapper or
-`ReadyAddedBlock`.
+store `VspcChange` directly and readiness produces `ReadyVspcChange`.
 
 Every admitted nonempty change has a nonempty `added` vector. A change with a
 nonempty removed chain and an empty added path is impossible under the
@@ -108,6 +107,8 @@ and later records provide the same non-null point and selected-parent shape.
 These pending structures share one bounded capacity. A single
 `HashMap<BlockHash, Vec<VspcChange>>` cannot represent multi-dependency
 readiness and ordered candidate selection.
+The exact pending capacity remains deferred in the
+[decision register](../decisions/deferred.md).
 
 Resolve both source and destination before a notification becomes actionable.
 An unresolved older notification must not head-block a later actionable one or
@@ -240,10 +241,9 @@ ahead of BlockProcessor's Live command. VspcProcessor then:
 3. prunes history below the committed sink with strict `<`; and
 4. makes retained and new actionable notifications authoritative.
 
-This is VspcProcessor's existing Live phase, not an additional coverage phase,
-terminal marker, checkpoint, or barrier. There is no subsequent body-tip
-coverage phase; the lifecycle proceeds directly to BlockProcessor Live and
-global `EnteredLive`.
+After this local transition, VspcProcessor accepts actionable notifications
+without consulting synthetic input. The lifecycle proceeds directly to
+BlockProcessor Live and global `EnteredLive`.
 
 Available block material lets notification-driven sink advancement continue.
 A notification whose needed block material has not arrived remains in

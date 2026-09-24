@@ -6,8 +6,8 @@ This document owns shared identities and graph vocabulary used by more than
 one component. It defines what the values mean. Storage owns their persistent
 representation and validation; processing documents own how workers use them.
 
-Rust declarations are conceptual contract sketches. They do not fix crate or
-module layout.
+Rust declarations follow the semantic-shape convention in the
+[architecture index](README.md#contract-conventions-and-scope).
 
 ## Shared value types — settled
 

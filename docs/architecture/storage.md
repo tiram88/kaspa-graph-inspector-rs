@@ -7,6 +7,8 @@ representation, transaction semantics, cache publication, and database read
 contracts. Shared identity and materiality meanings belong to the
 [domain model](domain-model.md). Processing documents own when storage
 operations are requested and how their results affect worker state.
+The PostgreSQL client, migration framework, and concrete SQL types remain
+deferred in the [decision register](../decisions/deferred.md).
 
 ## StorageService lifecycle — settled
 
@@ -106,8 +108,7 @@ before definite commit.
 The storage implementation provides separate sequential materialization and
 VSPC mutation lanes while allowing their transactions to overlap. Rebuild
 gets exclusive mutation access after processor deactivation. Reads remain
-concurrent. A shared mutation lock plus per-lane mutexes is one valid shape;
-exact lock types remain an implementation choice.
+concurrent.
 
 ## Database bootstrap and validation — settled
 
@@ -192,10 +193,9 @@ validated client:
 
 Every ordinary migration is transactional. A failed migration publishes no
 validated client. Automatic down migration, migration during a processing
-session, online migration, and in-place v1-to-v2 migration are forbidden. Any
-future migration that cannot be transactional must be an explicit offline
-administrative upgrade. The possible offline v1-to-v2 import remains outside
-v2 in [future-work.md](../future-work.md) and does not change startup rejection.
+session, online migration, and in-place v1-to-v2 migration are forbidden. A
+migration that cannot complete transactionally is rejected by ordinary
+startup.
 
 The correctness metadata, called **node metadata**, is conceptually:
 
@@ -218,9 +218,9 @@ and ordinary block or VSPC processing never updates it.
 `ValidatedDbClient` exposes the immutable `NodeMetadata` read from its exact
 database generation for session binding checks.
 
-There is no `persist_node_metadata` operation and NodeService never writes
-PostgreSQL. StorageService writes complete `NodeMetadata` atomically during
-first initialization or administrative reinitialization.
+NodeService never writes PostgreSQL. StorageService writes complete
+`NodeMetadata` atomically during first initialization or administrative
+reinitialization.
 `rebuild_from_pruning_point` changes only `db_pp_blue_score` within its complete
 processing-data replacement transaction. Observational node information is not
 persisted.
@@ -306,8 +306,9 @@ Without `--yes`, it displays the database identity, existing binding if any,
 the new exact `(network_id, genesis_hash)` binding, and the loss of all KGI
 data and migration history, then requires interactive confirmation. It never
 displays database credentials. A noninteractive invocation without `--yes`
-fails rather than waiting for input. The command runs once and exits; there is
-no persistent destructive `--reinitialize-db --yes` service option.
+fails rather than waiting for input. The command runs once and exits. `--yes`
+is accepted only by this one-shot command; normal service startup has no
+schema-reinitialization option.
 
 Both entry forms obtain the target Genesis hash from a validated RPC client.
 The CLI `NetworkId` must match that client's exact network type and suffix.
@@ -443,8 +444,8 @@ backstop, and `levels.size` changes atomically with block insertion.
 New levels use this sentinel, not zero. At most one current VSPC block occupies
 a level, but a reorg can leave an existing level without one.
 
-There is no dedicated persisted VSPC checkpoint. The committed materialized
-VSPC sink is derived as the maximum-ID materialized block with
+The committed materialized VSPC sink is derived as the maximum-ID materialized
+block with
 `is_in_vspc = true` and returned with its ID, hash, selected-parent hash, and
 stored DAA score. Resolve the non-null `blocks.selected_parent_id` through
 `block_identifiers`; for Genesis this yields synthetic ORIGIN.
@@ -456,8 +457,10 @@ and validation when constructing a `MaterializedSyncAnchor`.
 
 ## Caches and identity resolution — settled
 
-Moka is a candidate cache implementation; the architecture fixes cache
-contents and publication rules rather than the library.
+The architecture fixes cache contents and publication rules rather than the
+cache library.
+Exact cache capacities remain deferred in the
+[decision register](../decisions/deferred.md).
 
 ```rust
 struct CachedIdentity {
@@ -496,9 +499,8 @@ Do not cache negative identity results, mutable colors, or VSPC membership.
 Cold identity batches may left-join `blocks` to obtain the materialized bit.
 Publish cache entries only after the corresponding definite commit.
 
-`block_presence` is the settled replacement for the insufficient Boolean
-`check_block_materiality` candidate. It distinguishes all three shared
-`BlockPresence` states without creating an identity.
+`block_presence` distinguishes all three shared `BlockPresence` states without
+creating an identity.
 
 `resolve_materialized_ids` takes one ordered hash batch and returns one ID per
 input position, including repeated hashes. It resolves cache hits, performs at
@@ -585,7 +587,7 @@ One database transaction performs the complete replacement:
    changing the immutable network binding.
 9. Commit all processing data and PP-derived metadata atomically.
 
-No empty or partially rebuilt processing generation becomes visible.
+Only a fully committed processing generation becomes visible.
 
 Immediately after definite commit:
 
@@ -860,11 +862,10 @@ impl ValidatedDbClient {
 }
 ```
 
-`reconciliation_snapshot` is the settled storage operation behind the earlier
-conceptual `load_reconciliation_state` name. One read-only transaction locates
-the database PP exclusively at `(level=1, slot=0)`, reads
-`NodeMetadata.db_pp_blue_score`, derives the committed sink as the maximum-ID
-materialized VSPC block, resolves its selected-parent hash, and verifies that
+`reconciliation_snapshot` uses one read-only transaction to locate the
+database PP exclusively at `(level=1, slot=0)`, read
+`NodeMetadata.db_pp_blue_score`, derive the committed sink as the maximum-ID
+materialized VSPC block, resolve its selected-parent hash, and verify that
 the PP and sink are materialized and mutually coherent. For an initialized
 database it also resolves the supplied current node PP and proves
 `BoundaryMaterialized(current_node_pp)` in that same snapshot: the block must

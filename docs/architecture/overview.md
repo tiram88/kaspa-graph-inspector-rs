@@ -106,3 +106,6 @@ appropriate cache, proxy, and database scaling; a few thousand concurrent
 clients may make that separation useful. Database replication is not required
 for v2. The design does not authorize multiple independent processors writing
 the same database.
+
+Exact tracing, operational endpoints, and deployment layout remain
+deferred in the [decision register](../decisions/deferred.md).

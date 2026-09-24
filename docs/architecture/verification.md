@@ -13,8 +13,8 @@ when wall-clock behavior is under test. Upstream correctness assumptions use
 the source-analysis policy below rather than executable fixtures created only
 to prove rusty-kaspa behavior.
 
-These obligations are a required baseline. The breadth of an exhaustive parity
-matrix remains deferred in [deferred.md](../decisions/deferred.md).
+These obligations are the required baseline. Additional matrix breadth belongs
+to the [deferred decision register](../decisions/deferred.md).
 
 ## Pinned Upstream Assumption Review policy
 
@@ -233,9 +233,10 @@ and [rebuild transaction](storage.md#rebuild-transaction--settled) with:
    Inconsistent and requires Rebuild.
 10. `rebuild_from_pruning_point` either publishes the complete replacement or
    leaves the previous contents intact: Compact-ID allocation restarts, the PP
-   level receives its VSPC DAA score, no placeholder block rows exist, and
-   replacement caches publish only after definite commit. An ambiguous commit
-   retires the DB generation without reporting successful Rebuild.
+   level receives its VSPC DAA score, every block row is materialized, boundary
+   identities remain identity-only, and replacement caches publish only after
+   definite commit. An ambiguous commit retires the DB generation without
+   reporting successful Rebuild.
 11. Materiality remains derived from `blocks`; ordinary processing performs no
     individual block/identity deletion or boundary-identity promotion; parent
     rows have no foreign keys or cascade semantics; merge-set IDs validate
@@ -342,10 +343,12 @@ together. Required cases are:
    flags causes the lifecycle to stop and join both synthetic producers, then
    enqueue VspcProcessor Live before BlockProcessor Live and finally publish
    global Live.
-6. Live admission makes no additional GetBlockDagInfo call for body-tip
-   coverage, waits for no extra GetBlocks page, and does not inspect body-tip
-   materiality. A dropped activation callback for an otherwise unobserved stale
-   body tip neither blocks Live nor requests recovery.
+6. Live admission depends only on PostSeal and both overlap flags at a complete
+   page boundary, without a retained-body-tip completeness result. It makes no
+   additional `GetBlockDagInfo` call for body-tip coverage, waits for no extra
+   GetBlocks page, and does not inspect body-tip materiality. A dropped
+   activation callback for an otherwise unobserved stale body tip neither
+   blocks Live nor requests recovery.
 7. An omitted block that later appears as an admitted block dependency or a
    VSPC chain member follows the existing dependency or recovery disposition.
 

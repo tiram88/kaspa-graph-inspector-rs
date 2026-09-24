@@ -23,9 +23,9 @@ defined in [`AGENTS.md`](../../AGENTS.md). Within architecture documents:
 
 - text marked **settled** is a requirement;
 - Rust, SQL, and message fragments fix semantic shape only and need not compile
-  as written;
-- crate layout, libraries, concrete SQL types, capacities, locks, and other
-  mechanics remain implementation choices unless a contract fixes them; and
+  as written; workspace, crate, and module layout remain deferred in the
+  [decision register](../decisions/deferred.md);
+- mechanics not fixed by a contract remain implementation choices; and
 - a conflict must be reported and resolved in the owning architecture or an
   accepted ADR, never blended silently.
 
@@ -34,13 +34,16 @@ in [future-work.md](../future-work.md) is outside v2 until promoted by an
 accepted architecture decision. Open requirements and implementation choices
 are tracked separately in the [decision register](../decisions/README.md).
 
-Legacy handoffs may use these names:
+Legacy handoffs and earlier planning material may use these names:
 
 | Legacy name | Current name |
 |---|---|
 | `NodeClient` | `NodeService` |
 | `ValidatedStorageService` | `ValidatedDbClient` |
 | `Cycle 1` | `PreSeal` |
+| `Quiesce` | `Deactivate` |
+| `check_block_materiality()` | `ValidatedDbClient::block_presence()` |
+| `load_reconciliation_state()` | `ValidatedDbClient::reconciliation_snapshot()` |
 
 Behavioral replacements are recorded in
 [superseded.md](../decisions/superseded.md) and rejected proposals in
@@ -115,9 +118,9 @@ behavior.
 | §16, DAA navigation and window API | `api.md`. Storage query semantics needed by these endpoints remain in `storage.md`. | Verified and cut over |
 | §17, Web behavior | `web.md`. Wire contracts consumed by the browser remain in `api.md`. | Verified and cut over |
 | §18, Resource isolation and scalability | `overview.md` owns the system-wide isolation model. Concrete component budgets and saturation behavior remain with each component; API budgets remain in `api.md`. | Verified and cut over |
-| §19, Tests and verification obligations | `verification.md`, organized by the architecture owner being verified. Exact unresolved test-matrix breadth remains a deferred decision rather than a duplicate contract. | Verified and cut over |
+| §19, Tests and verification obligations | `verification.md`, organized by the architecture owner being verified. Additional choices go to `../decisions/deferred.md`. | Verified and cut over |
 | §20, Remaining implementation decisions and v2.1 boundary | Unresolved v2 architecture goes to `../decisions/open.md`; constrained implementation choices go to `../decisions/deferred.md`; execution order goes to `../implementation/sequence.md`; work outside v2 remains in `../future-work.md`. | Verified and cut over |
-| §21, Rejected designs | `../decisions/rejected.md` or `../decisions/superseded.md`, according to whether the design was never accepted or was replaced after acceptance. Any current replacement behavior remains in its focused architecture owner. | Verified and cut over |
+| §21, Rejected designs | `../decisions/rejected.md` or `../decisions/superseded.md`, according to whether the design was never accepted or was replaced after acceptance. | Verified and cut over |
 
 ## Coverage verification
 

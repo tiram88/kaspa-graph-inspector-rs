@@ -89,7 +89,8 @@ Do not confuse this with a required chain block missing from cache when its
 effect on a retained level cannot be determined; that case requires reload.
 
 `MAX_CACHE_DEPTH = 1000` complete levels. Define a separate
-`MAX_WINDOW_DEPTH <= MAX_CACHE_DEPTH`; its exact value remains to select.
+`MAX_WINDOW_DEPTH <= MAX_CACHE_DEPTH`; its exact value remains deferred in the
+[decision register](../decisions/deferred.md).
 No arbitrary maximum block count may truncate a retained level: **every**
 block and relevant edge endpoint for each cached level is available. Every
 windowed endpoint caps requested depth to `MAX_WINDOW_DEPTH` and reports
@@ -183,10 +184,7 @@ negotiated response format, `representation_version`, and publication state;
 interval `(epoch,from,to)` is immutable and cacheable. A "to current" query
 must revalidate. SSE has no ETag. Historical DB windows have **no ETag in
 v2**, because computing an authoritative validator would itself require DB
-work. Exact graph wire format is intentionally not chosen yet: benchmark
-JSON versus appropriate binary formats (CBOR, MessagePack, Protobuf, etc.)
-over server construction/serialization, compression, transfer, browser
-decode, and graph-model construction. SSE stays small text cursor events.
+work. SSE stays small text cursor events.
 
 ## Reset and recovery-time availability — settled
 
@@ -207,7 +205,7 @@ Common Reset effects are:
 Reset has a completed-effect acknowledgement. The acknowledgement establishes
 those effects but does not mean that a replacement image has been published.
 Ordinary graph-update loss semantics do not weaken this reliable control
-barrier. The exact command representation remains an implementation detail.
+barrier.
 PostSeal and Live are reliable, exact-once, state-specific controls, but they
 are not processing barriers and have no publication-completion
 acknowledgement.
@@ -244,8 +242,9 @@ image or get canceled, never mixed old/new tables. See PostgreSQL's
 [`TRUNCATE`](https://www.postgresql.org/docs/current/sql-truncate.html) and
 [MVCC caveat](https://www.postgresql.org/docs/current/mvcc-caveats.html)
 documentation. The API read barrier and bounded queries serve this contract;
-implementation may add safe transaction locking or choose another reset
-strategy without changing observable behavior.
+the selected reset mechanism must preserve the same observable behavior. Its
+detailed cancellation and transaction mechanism remains deferred in the
+[decision register](../decisions/deferred.md).
 
 ## DAA navigation and graph windows — settled
 
@@ -262,7 +261,7 @@ storage lookup. Level resolution and its window must come from **one immutable
 HGC image** or one consistent DB transaction, never different revisions.
 ApiService derives cached levels' final scores from `VspcCommitted` and its
 cached block metadata; storage sends no level-score delta. Historical
-DAA/window response caching is excluded from v2 and recorded for v2.1.
+DAA/window responses are not cached in v2.
 
 The public graph API has conceptually:
 
@@ -272,12 +271,13 @@ The public graph API has conceptually:
 - status/info covering network, processing/API versions, node state, and
   current validated node server version.
 
-Exact paths, methods, and final wire schema are implementation/API design
-details. There is no `/blockHashesByIds`-style endpoint in v2 because every
-graph response carries its hash dictionary. A window fully served by HGC has
-a live cursor. A historical DB-backed window is a static image without a
-cursor, capped by `MAX_WINDOW_DEPTH`. Requests crossing HGC's lower bound
-take the consistent DB path; head depth itself never forces this fallback.
+Exact endpoint URLs, HTTP methods, the final wire schema, and the graph wire
+format remain deferred in the [decision register](../decisions/deferred.md).
+
+Every graph response carries its hash dictionary. A window fully served by HGC
+has a live cursor. A historical DB-backed window is a static image without a
+cursor, capped by `MAX_WINDOW_DEPTH`. Requests crossing HGC's lower bound take
+the consistent DB path; head depth itself never forces this fallback.
 
 ## Resource isolation and saturation — settled
 
@@ -314,8 +314,9 @@ V2 exposes these operational measurements:
 - delta-journal resets and slow-client disconnects; and
 - BlockProcessor and VspcProcessor commit latency.
 
+The metrics export mechanism and labels remain deferred in the
+[decision register](../decisions/deferred.md).
+
 API traffic up to configured rejection limits must not materially increase
-either processor's commit latency. Exact capacities remain in the
-[deferred decision register](../decisions/deferred.md). Traffic-share estimates
-and a numeric SSE-client limit are load-test inputs rather than fixed
-architecture constants.
+either processor's commit latency. Exact API capacities and resource budgets
+remain deferred in the [decision register](../decisions/deferred.md).

@@ -40,7 +40,8 @@ distance = max(0, head_level - visible_window_end_level)
 If the head is visible or at most ten levels ahead, update without added
 throttling. Beyond that, delay increasingly as distance grows, while
 preserving contiguous catch-up and snapshot fallback if delta retention
-expires. The exact delay curve and cap remain implementation work.
+expires. The exact delay curve and cap remain deferred in the
+[decision register](../decisions/deferred.md).
 
 ## Block identity and Genesis — settled
 

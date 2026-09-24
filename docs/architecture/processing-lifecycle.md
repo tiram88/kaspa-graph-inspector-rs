@@ -48,8 +48,6 @@ that Rebuild can repair it.
 
 ## Supervisor and recovery intent — settled
 
-There is no `Auto` recovery mode.
-
 ```rust
 enum RecoveryMode {
     Resync,
@@ -225,6 +223,8 @@ worker-to-worker channels are bounded and cancellation-aware. Full means
 closed/unavailable means a session ownership fault; cancellation during
 expected teardown is not a fault. The graph observer feed is the exception:
 its loss invalidates the API image without disrupting processing.
+Detailed Tokio fairness and drain mechanics remain deferred in the
+[decision register](../decisions/deferred.md).
 
 `Start`, processor `Begin`, `Catchup`, and each processor's `Live` are
 exact-once, state-specific commands. Duplicate or invalid-state delivery is
@@ -245,9 +245,6 @@ Supervisor then downgrades both desired and active recovery to `Resync`.
 Duplicate or invalid-state milestone delivery is Fatal. Entering Live satisfies
 and clears the remaining recovery requirement.
 
-Administrative/API-triggered recovery through this same Supervisor path is a
-KGI v2.1 candidate, not a v2 requirement.
-
 ## ResyncEngine — settled
 
 Commands:
@@ -257,9 +254,6 @@ Start { mode, rpc, db }
 Deactivate
 Shutdown
 ```
-
-`Deactivate` replaces the earlier name `Quiesce` with the same barrier
-semantics.
 
 The engine prepares one common structure for Resync and Rebuild:
 
@@ -271,8 +265,6 @@ struct PreparedSync {
     boundary_seal_blue_score: u64,
 }
 ```
-
-Do not add a redundant `ProcessingResources` wrapper.
 
 ### Processor Begin payloads
 
@@ -364,8 +356,7 @@ cancellation, connection loss, or validated-client loss is instead a session
 fault/retry and does not prove that Rebuild is required. NodeService owns
 classification of a malformed GetBlock response as
 `RecoveryInputInvalid(MalformedGetBlock)`; ResyncEngine applies the bounded
-malformed-recovery-input policy above. Rebuild occurs as a separate run; there
-is no internal Auto fallback.
+malformed-recovery-input policy above. Rebuild occurs as a separate run.
 
 ### Rebuild preparation
 
@@ -483,9 +474,8 @@ Begin needs no acknowledgement. Before Catchup:
 Processor-local notification gates are authoritative for immediate dropping.
 Callbacks arriving while the router remains Disabled during activation are
 intentionally dropped without overlap credit or a recovery request. Synthetic
-pumps continue until overlap is demonstrated. There is no callback replay or
-separate body-tip coverage gate; the recovery scope is defined under
-[Live admission](#live-admission).
+pumps continue until the [Live admission](#live-admission) predicate is
+satisfied.
 
 ### Catchup trigger
 
@@ -554,24 +544,24 @@ the same cursor at the target block interval; a short nonempty page is not a
 fallback. The rolling marker is the normal path and these fallbacks cover an
 exceptional failure to transition through it. A material omission exposed
 under strict pre-Catchup processing uses the existing `Require(Resync)` fault
-path; there is no separate mixed-view recovery protocol. The synthetic pump
-continues through Catchup and observes later reorgs. ResyncEngine must have
+path. The synthetic pump continues through Catchup and observes later reorgs.
+ResyncEngine must have
 observed BlockProcessor's definitely committed `PpBoundarySealed` event before
 the primary path or a fallback can enter Catchup. Eligibility while still
 PreSeal fails the current recovery.
 Resync starts PostSeal only after reconciliation.
 
-### Late notification filtering without epochs
+### Late notification filtering
 
-There is no notification epoch because late messages after unsubscribe cannot
-be reliably distinguished from early messages after resubscribe.
+Transport delivery cannot reliably distinguish a late message after
+unsubscribe from an early message after resubscribe. Processor-local state and
+objective session bounds therefore govern admission.
 
 Begin resets processor-local state and closes notification gates. Catchup
 supplies the objective block and VSPC lower bounds derived from the current
 session anchors. Their exact filtering and credit rules belong to
 [block-processing.md](block-processing.md#catchup-filtering-and-overlap) and
 [vspc-processing.md](vspc-processing.md#catchup-filtering-crossing-and-overlap--settled).
-The engine does not add a timer-based grace period or transport epoch.
 
 ## Catchup overlap and transition to Live — settled
 
@@ -632,28 +622,23 @@ does not mean either processor's queues or dependency state are empty.
 
 #### Recovery scope and omitted body tips
 
-KGI v2 does not attempt to reproduce every block in the node's retained body
-DAG before entering Live. It neither uses `GetBlockDagInfo.tip_hashes` as a
-completeness frontier nor assumes that moving a GetBlocks `low_hash` lower
-enumerates every retained body tip. The exact upstream enumeration behavior is
-owned as an
+KGI v2's required graph is observation-based and is not a complete snapshot of
+the node's retained body DAG. The exact upstream stale-tip enumeration behavior
+is owned as an
 [accepted unverified risk](verification.md#accepted-unverified-upstream-risk-stale-tip-enumeration)
 by the verification policy; Live admission does not depend on its outcome.
 
 A retained node block is outside KGI's required graph unless it is observed
 through a normal KGI input: GetBlocks, an Enabled BlockAdded notification,
 dependency resolution for an admitted block, or VSPC chain membership. KGI
-does not take a fixed body-tip snapshot, fetch every tip, delay Live for extra
-coverage pages, or claim body-DAG snapshot completeness. Requiring all body
-tips before Live could repeatedly request Resync for a valid block outside
-KGI's required graph.
+does not claim body-DAG snapshot completeness.
 
 If an earlier omitted block later becomes required, the existing mechanisms
 apply: BlockProcessor dependency resolution obtains missing ancestry;
 resolver-confirmed unavailability requests Rebuild; a nonmaterialized VSPC
 chain member requests Rebuild; and ordinary processing or transport invariant
 failures request their settled recovery disposition. Live admission relies on
-those mechanisms rather than a separate tip-coverage proof.
+those mechanisms when an earlier omission becomes relevant.
 
 Normal processor and stream invariants remain active in Live and request their
 settled recovery dispositions when violated.
@@ -675,6 +660,8 @@ The owning services may retain their validated generations. Shutdown stops
 engine and processors before NodeService and then StorageService. Channel
 failures follow the bounded-delivery and ownership semantics above;
 component-specific draining duties remain in the focused processor documents.
+Exact shutdown timeouts and escalation policy remain deferred in the
+[decision register](../decisions/deferred.md).
 
 The graph observer path is deliberately separate: observer loss invalidates
 and reloads the API image without interrupting processing. Its behavior is

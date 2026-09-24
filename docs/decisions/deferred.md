@@ -10,17 +10,25 @@ become durable project constraints.
    caches, DependencyResolver and RPC concurrency, delta history, and HTTP
    work. Local RPC scheduling and batching remain implementation choices only
    where the focused architecture does not fix request boundaries or batch
-   semantics.
+   semantics. Moka is the current cache-library candidate.
 4. Orphan occupancy threshold within the settled range of approximately one
    quarter through one third.
-5. Detailed Tokio fairness and drain mechanics.
-6. API endpoint URLs and final wire schema. Select the graph response format
-   from an end-to-end benchmark across server construction and serialization,
-   compression, transfer, browser decoding, and graph-model construction.
+5. Detailed Tokio fairness, drain, and concrete storage synchronization
+   mechanics. A shared mutation lock plus per-lane mutexes is one valid shape;
+   exact lock types remain an implementation choice.
+6. API endpoint URLs, HTTP methods, and final wire schema. The exact graph
+   response format is intentionally not chosen yet. Benchmark JSON against
+   appropriate binary formats such as CBOR, MessagePack, and Protobuf across
+   server construction and serialization, compression, transfer, browser
+   decoding, and graph-model construction.
 7. Exact `MAX_WINDOW_DEPTH` within the settled 1000-level cache bound, HTTP and
-   SSE budgets, adaptive fixed-view delay curve, and graph-delta history size.
+   SSE budgets, adaptive fixed-view delay curve and cap, and graph-delta
+   history size. Treat traffic-share estimates and the numeric SSE-client
+   limit as load-test inputs rather than fixed architecture constants.
 8. Detailed historical-read cancellation and transaction mechanism around the
-   acknowledged Rebuild Reset barrier.
+   acknowledged Rebuild Reset barrier. Safe transaction locking is one
+   candidate; another mechanism is acceptable when it preserves the complete
+   observable Reset contract.
 9. Exact metrics export and labels, tracing, operational endpoints, and
    deployment layout. Required v2 observability and processing-latency
    acceptance remain settled.

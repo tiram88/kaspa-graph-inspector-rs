@@ -240,10 +240,8 @@ cannot be proven. A partial subscription or unsubscription failure likewise
 retires the handle. Callbacks received while the router remains Disabled
 during remote activation are intentionally dropped; they receive no Catchup
 overlap credit and do not themselves request recovery. NodeService does not
-replay dropped callbacks, and Live admission does not attempt to prove that
-every retained node body tip was observed. If an omitted block later becomes
-required by an admitted block or VSPC transition, the normal dependency and
-recovery contracts apply; see the
+replay dropped callbacks. The consequences for Live admission and a block that
+later becomes required belong to the
 [processing lifecycle](processing-lifecycle.md#recovery-scope-and-omitted-body-tips).
 Disabling is an immediate local cutoff, not a quiescence or transport fence.
 
