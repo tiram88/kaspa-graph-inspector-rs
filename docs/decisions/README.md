@@ -1,13 +1,9 @@
 # Architecture decision register
 
-This directory records KGI v2 decisions by current status. A status file is a
-register, not a second copy of the architecture. Complete current behavior
-and the rationale needed to interpret it belong in the focused document named
-by the entry. The registers record each item's status, summarize what was
-decided or remains unresolved, and link to its focused owner. Standalone ADRs
-may preserve historical decision rationale, but they do not become competing
-behavioral owners. Rejected and superseded entries may retain the reason a
-former design must not return.
+This directory indexes KGI v2 decisions by current status. The project-wide
+[decision status and references policy](../../AGENTS.md#decision-status-and-references)
+defines what each entry may contain, how status changes are recorded, and when
+another document may reference a decision.
 
 | File | Meaning |
 |---|---|
@@ -19,12 +15,3 @@ former design must not return.
 
 `docs/future-work.md` remains separate: it contains work outside KGI v2 rather
 than unresolved v2 decisions.
-
-When a decision changes status, move its entry in the same change that updates
-the owning architecture document. Rejected and superseded entries prevent
-accidental reintroduction; they do not compete with the current owner. Open and
-deferred entries never weaken settled constraints.
-
-The authority and reading order in [`AGENTS.md`](../../AGENTS.md) apply. The
-focused architecture owner named by an entry is the current normative source;
-historical handoffs do not participate in precedence.

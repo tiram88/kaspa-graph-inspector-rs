@@ -53,6 +53,33 @@ It must not restate the owned contract as an independent rule, add conditions
 to it, or supply behavior missing from the owner. A duplicated normative claim
 is a documentation defect even when both copies currently agree.
 
+### Decision status and references
+
+Each decision appears in exactly one current-status register. Apply these
+content rules:
+
+- `settled.md` gives only a concise outcome and a link to the focused owner;
+  the owner contains the complete current behavior and interpretive rationale;
+- `open.md` or `deferred.md` owns the unresolved question or choice, while
+  focused architecture states only the settled constraints around it;
+- a rejected proposal appears only in `rejected.md`, with the concise reason it
+  must not be reintroduced;
+- a replaced design appears only in `superseded.md`, with a concise description
+  of its replacement and a link to the current owner; and
+- a status change moves the entry rather than copying it, and settlement
+  updates the focused owner in the same change.
+
+Do not reproduce a register entry in another register or document. The focused
+owner may mark its current contract settled, but outside that owner references
+must not repeat the contract's mechanics or rationale. Rejected alternatives
+and superseded designs remain in their applicable register. Add a
+cross-document reference only when it is necessary to understand the local
+contract, verify it, or follow a lifecycle or component boundary. Such a
+reference names and links the owner without summarizing its rules.
+Compatibility material may map an obsolete term to its current term when that
+translation is itself required. Do not add references solely for
+discoverability.
+
 Review reports and historical material may quote or summarize enough of a
 claim to identify the evidence or finding, but must link to the current owner
 when one exists and never become an alternate contract. Writing a report
