@@ -626,19 +626,20 @@ does not mean either processor's queues or dependency state are empty.
 #### Recovery scope and omitted body tips
 
 KGI v2 does not attempt to reproduce every block in the node's retained body
-DAG before entering Live. GetBlocks follows the selected-chain history, its
-merge sets, and the anticone reachable from current Virtual parents; lowering
-its `low_hash` does not make it enumerate stored body tips outside that view.
-`GetBlockDagInfo.tip_hashes` can therefore contain an unextended stale tip that
-no GetBlocks page will return.
+DAG before entering Live. It neither uses `GetBlockDagInfo.tip_hashes` as a
+completeness frontier nor assumes that moving a GetBlocks `low_hash` lower
+enumerates every retained body tip. The exact upstream enumeration behavior is
+owned as an
+[accepted unverified risk](verification.md#accepted-unverified-upstream-risk-stale-tip-enumeration)
+by the verification policy; Live admission does not depend on its outcome.
 
-Such a tip is outside KGI's required graph unless it is observed through a
-normal KGI input: GetBlocks, an Enabled BlockAdded notification, dependency
-resolution for an admitted block, or VSPC chain membership. KGI does not take a
-fixed body-tip snapshot, fetch every tip, delay Live for extra coverage pages,
-or claim body-DAG snapshot completeness. Requiring all body tips before Live
-could repeatedly request Resync for a valid tip that is intentionally outside
-the current Virtual traversal.
+A retained node block is outside KGI's required graph unless it is observed
+through a normal KGI input: GetBlocks, an Enabled BlockAdded notification,
+dependency resolution for an admitted block, or VSPC chain membership. KGI
+does not take a fixed body-tip snapshot, fetch every tip, delay Live for extra
+coverage pages, or claim body-DAG snapshot completeness. Requiring all body
+tips before Live could repeatedly request Resync for a valid block outside
+KGI's required graph.
 
 If an earlier omitted block later becomes required, the existing mechanisms
 apply: BlockProcessor dependency resolution obtains missing ancestry;

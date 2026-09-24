@@ -88,6 +88,15 @@ implementation proceeds. Changing the reference revision requires a new PUAR;
 otherwise repeat the review only when a compatibility problem or relevant
 upstream change gives a concrete reason.
 
+### Accepted unverified upstream risk: stale-tip enumeration
+
+The exact stale-body-tip enumeration boundary of GetBlocks is deliberately not
+a PUAR checklist item. Whether lowering `low_hash` can expose every stored tip
+outside the current Virtual traversal is an accepted unverified upstream risk.
+The [recovery scope](processing-lifecycle.md#recovery-scope-and-omitted-body-tips)
+does not claim body-DAG snapshot completeness or make Live admission depend on
+that behavior, so a PUAR report need not assess this premise.
+
 ## NodeService and RPC behavior
 
 Verify the [NodeService contract](node-service.md#nodeservice--settled) and
