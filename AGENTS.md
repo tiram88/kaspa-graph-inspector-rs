@@ -60,8 +60,10 @@ content rules:
 
 - `settled.md` gives only a concise outcome and a link to the focused owner;
   the owner contains the complete current behavior and interpretive rationale;
-- `open.md` or `deferred.md` owns the unresolved question or choice, while
-  focused architecture states only the settled constraints around it;
+- `open.md` or `deferred.md` owns an unresolved choice's status, alternatives,
+  analysis, and selection method; a focused owner may declare a locally
+  relevant unresolved parameter or choice, state its settled constraints, and
+  link to the applicable register;
 - a rejected proposal appears only in `rejected.md`, with the concise reason it
   must not be reintroduced;
 - a replaced design appears only in `superseded.md`, with a concise description
@@ -79,6 +81,13 @@ reference names and links the owner without summarizing its rules.
 Compatibility material may map an obsolete term to its current term when that
 translation is itself required. Do not add references solely for
 discoverability.
+
+A concise local open or deferred declaration is not duplication when omitting
+it would make the focused contract appear complete, fixed, or accidentally
+silent. Limit that declaration to the parameter or choice, its settled bounds,
+its unresolved status, and a link to the status register. Keep alternatives,
+candidate comparisons, selection procedures, and tuning rationale only in the
+register.
 
 Review reports and historical material may quote or summarize enough of a
 claim to identify the evidence or finding, but must link to the current owner
