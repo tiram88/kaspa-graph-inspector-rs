@@ -130,17 +130,23 @@ that behavior, so a PUAR report need not assess this premise.
 Verify the [NodeService contract](node-service.md#nodeservice--settled) and
 [RPC normalization](node-service.md#rpc-normalization) with:
 
-1. GetBlocks fixtures for the inclusive low hash, unequal hash/block vector
-   lengths, hash/block disagreement, duplicates, and a valid response that
-   normalizes to zero blocks. For every malformed recovery shape, assert typed
-   rejection, no cursor or processor advancement, and retirement of the exact
-   RPC generation.
-2. Genesis discovery request construction with `low_hash = None`, blocks and
+1. Common full-block normalization produces the flattened
+   `ValidatedNodeBlock` and rejects missing header or verbose data, inconsistent
+   hashes, duplicate direct parents, contradictory self-reference, and an
+   ordinary selected parent absent from the direct parents. Cover the exact
+   validated-Genesis ORIGIN exception separately.
+2. GetBlocks fixtures cover the inclusive low hash, unequal hash/block vector
+   lengths, hash/block disagreement, duplicates, a valid response that
+   normalizes to zero blocks, and a page with one invalid full-block member.
+   For every malformed recovery shape, assert typed whole-page rejection, no
+   cursor or processor advancement, and retirement of the exact RPC
+   generation.
+3. Genesis discovery request construction with `low_hash = None`, blocks and
    transactions disabled, plus response validation for a nonempty hash vector,
    empty block vector, transport failure, and malformed output. Given a valid
    response, NodeService uses its first hash without substituting a local
    Genesis constant.
-3. Consensus parameter resolution uses exact `NetworkId` parameters when
+4. Consensus parameter resolution uses exact `NetworkId` parameters when
    supported. Mainnet emits no divergence warning. Every non-mainnet profile,
    including supported testnet and simnet, warns with the exact network,
    parameter source, and all three derived values, then continues. An
@@ -150,34 +156,41 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
    incompatible explicit file and use of the option with mainnet or any
    testnet suffix fail configuration without fallback. No path represents the
    selected local values as having been compared with the node.
-4. Given a fully empty `VirtualChainChanged`, NodeService drops it before
+5. Given a fully empty `VirtualChainChanged`, NodeService drops it before
    bounded delivery with no overlap credit, processor-capacity use, or
    recovery. Distinguish it from an empty VSPC V2 RPC page.
-5. VSPC V2 request construction uses `min_confirmation_count = None` and
+6. VSPC V2 request construction uses `min_confirmation_count = None` and
    `data_verbosity_level = Some(RpcDataVerbosityLevel::None)`. Mocked valid
    complete-prefix and advancing-cursor responses exercise KGI's pump behavior.
    Reject a removed chain without an added path, duplicate members,
    removed/added intersection, and a nonadvancing nonempty added cursor as the
    corresponding `MalformedVspcResponse` reason, with generation retirement
    and no cursor advancement.
-6. Mocked notification and VSPC V2 responses with a nonempty removed chain and
+7. Mocked notification and VSPC V2 responses with a nonempty removed chain and
    an empty added path. Assert the source-specific dispositions: a notification
    requires Resync; `ValidatedRpcClient` rejects a synthetic response as
    `MalformedVspcResponse(RemovedChainWithoutAddedPath)` without returning a
    normalized change, and ResyncEngine follows the shared malformed
    recovery-response policy without dispatch or cursor advancement.
-7. The subscription activation order across the
+8. The subscription activation order across the
    [processing lifecycle](processing-lifecycle.md#entering-recovery-phases) and
    [NotificationRouter](node-service.md#notificationrouter): ResyncEngine alone
    sends both processor Catchup commands before invoking NodeService activation;
    NodeService sends no processor command; routing remains Disabled until both
    remote starts succeed; and callbacks received during that interval are
    dropped without overlap credit or immediate recovery.
-8. Verify the
+9. Verify the
    [current pruning-point block contract](node-service.md#current-pruning-point-block)
-   with success, every listed malformed response condition, exact-generation
-   retirement, and transport or generation loss without inferring a database
-   mismatch.
+   with success, the Genesis exception, non-Genesis parent validation, every
+   listed malformed response condition, exact-generation retirement, and
+   transport or generation loss without inferring a database mismatch.
+10. Individual full-block GetBlock validates the requested hash and every
+    `ValidatedNodeBlock` invariant. Malformed output retires the exact RPC
+    generation; definitive not-found and transport failure retain their
+    distinct classifications.
+11. BlockAdded normalization failure disables routing, enqueues no block, and
+    reports `NotificationInputInvalid(MalformedBlockAdded)` without retiring
+    the RPC generation.
 
 Use injected clocks and deterministic jitter to verify the independent
 [NodeService](node-service.md#nodeservice--settled) and
@@ -293,7 +306,7 @@ and an exact no-transactions GetBlock header. Cover:
   Rebuild.
 
 Verify Rebuild obtains one normalized current pruning-point block, completes
-the API Reset barrier, and passes that same `SharedNodeBlock` to
+the API Reset barrier, and passes that same `ValidatedNodeBlock` to
 `rebuild_from_pruning_point` rather than rediscovering it or mixing RPC
 generations. Malformed pruning-point responses use the shared malformed-input
 budget; transport and generation loss retain their session-fault disposition.
@@ -390,6 +403,11 @@ Verify [block admission](block-processing.md#admission-and-materialization),
    or connection failure does not establish unavailability.
 5. A failed post-commit `PersistedBlock` delivery cannot be treated as a
    harmless duplicate or omission.
+6. A malformed resolver full-block response retires the exact RPC generation:
+   during Catchup it follows the shared malformed recovery-input budget, while
+   during Live it requires Resync without consuming that budget.
+7. An incoming hash already classified as a permanent boundary identity
+   reports `MaterialityViolation` and requires Rebuild.
 
 ## VSPC processing
 

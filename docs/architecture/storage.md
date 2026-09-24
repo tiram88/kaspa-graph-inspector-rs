@@ -516,7 +516,7 @@ The sole processing-recovery API allowed to clear processing data is:
 impl ValidatedDbClient {
     async fn rebuild_from_pruning_point(
         &self,
-        pruning_point: SharedNodeBlock,
+        pruning_point: ValidatedNodeBlock,
     ) -> Result<MaterializedSyncAnchor, StorageError>;
 }
 ```
@@ -599,8 +599,8 @@ levels(1).size       = 1
 
 For a Genesis pruning point, the bootstrap path stores synthetic ORIGIN as the
 non-null selected-parent identity while storing zero actual direct parents.
-ORIGIN is not a direct parent. Genesis never enters ordinary
-`BlockMaterialization` or the BlockProcessor `PersistedBlock` delivery path.
+ORIGIN is not a direct parent. Genesis never enters the ordinary BlockProcessor
+or `PersistedBlock` delivery path.
 
 ### Return value
 
@@ -688,16 +688,6 @@ may start; storage owns the atomic replacement itself.
 ## Block materialization transaction — settled
 
 ```rust
-struct BlockMaterialization {
-    hash: BlockHash,
-    selected_parent: BlockHash,
-    direct_parents: Vec<BlockHash>,
-    blue_merge_set: Vec<BlockHash>,
-    red_merge_set: Vec<BlockHash>,
-    timestamp: Timestamp,
-    daa_score: u64,
-}
-
 enum ReferencePolicy {
     AllowBoundaryIdentities,
     RequireMaterialized,
@@ -712,16 +702,18 @@ struct MaterializeBlockOutcome {
 impl ValidatedDbClient {
     async fn materialize_block(
         &self,
-        block: BlockMaterialization,
+        block: ValidatedNodeBlock,
         policy: ReferencePolicy,
     ) -> Result<MaterializeBlockOutcome, StorageError>;
 }
 ```
 
-`BlockMaterialization` is hash/consensus-level input. It contains no DB ID,
-level, or slot. Storage owns transactional ID resolution, coordinate
-allocation, initial color, and persistence. Only level-zero direct parents
-from `RpcBlock.header.parents_by_level` enter it.
+The shared [validated node block](domain-model.md#shared-value-types--settled)
+is hash/consensus-level input and contains no DB ID, level, or slot. Storage
+persists its hash, selected parent, direct parents, merge sets, timestamp, and
+DAA score; blue score and blue work remain available to processing but are not
+duplicated in the block row. Storage owns transactional ID resolution,
+coordinate allocation, initial color, and persistence.
 
 For every materialization, intern hashes in this order:
 
@@ -731,17 +723,14 @@ For every materialization, intern hashes in this order:
 4. selected-parent hash; and
 5. the block's own hash.
 
-Deduplicate by first occurrence within this sequence. Validate:
+Deduplicate by first occurrence within this sequence. Validate the
+database-relative conditions atomically:
 
-- no contradictory self-reference;
-- unique direct parents;
-- selected parent occurs among direct parents for ordinary non-Genesis
-  materialization;
 - boundary materiality for references under the selected policy;
 - an already materialized own hash as a dedup outcome returning its ID and
   coordinate; and
 - an own hash already classified as a permanent boundary identity as an
-  invariant violation.
+  explicit typed materiality violation.
 
 `RequireMaterialized` requires every reference to be materialized and creates
 no boundary identities. `AllowBoundaryIdentities` may intern missing
@@ -749,10 +738,8 @@ references as permanent outside-boundary identities, but it always
 materializes the incoming block. Ordinary unresolved orphans never use the
 permissive policy merely to persist missing hashes.
 
-The PP bootstrap path handles ORIGIN separately: its non-null selected-parent
-ID may name ORIGIN even though ORIGIN is not an actual direct parent. Genesis
-has zero actual direct parents. This exception does not apply to ordinary
-materialization.
+The PP bootstrap path handles the validated Genesis ORIGIN exception
+separately. Ordinary `materialize_block` never receives Genesis.
 
 Coordinate allocation is:
 

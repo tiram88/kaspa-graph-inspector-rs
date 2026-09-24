@@ -26,7 +26,7 @@ Genesis has no discarded DAG past, so a Genesis PP is intrinsically sealed at
 blue score zero. After the atomic Genesis rebuild transaction, `BeginRebuild`
 starts BlockProcessor directly in `PostSeal` and emits the existing exact-once
 `PpBoundarySealed` milestone while handling Begin. Genesis never enters the
-ordinary `BlockMaterialization` or `PersistedBlock` path.
+ordinary BlockProcessor or `PersistedBlock` path.
 
 For every non-Genesis PP, the BlueScore approximation above is accepted and
 `BeginRebuild` starts in `PreSeal`. PreSeal blocks arrive in
@@ -106,8 +106,8 @@ payload.
 The local notification gate closes on Begin and opens on Catchup. Continue
 polling its receiver while closed and discard received notifications
 immediately. Do not accumulate them for later processing. NodeService rejects
-an Enabled BlockAdded lacking verbose materialization data before it reaches
-this input.
+an Enabled BlockAdded that cannot become a `ValidatedNodeBlock` before it
+reaches this input.
 
 ### Admission and materialization
 
@@ -116,10 +116,10 @@ calls `ValidatedDbClient::block_presence(block_hash)`:
 
 - an already materialized block deduplicates and still yields its
   `PersistedBlock` identity to downstream consumers;
-- a new block is normalized into `BlockMaterialization` and committed under
-  the phase's current storage reference policy; and
-- a permanent boundary identity used as the incoming block is an invariant
-  violation.
+- a new `ValidatedNodeBlock` is committed under the phase's current storage
+  reference policy; and
+- a permanent boundary identity used as the incoming block reports a typed
+  materiality violation.
 
 Reference validation and complete missing-reference reporting occur inside the
 atomic `ValidatedDbClient::materialize_block(block, policy)` transaction. This
@@ -131,6 +131,8 @@ Resync. Catchup and Live admit blocks with unresolved ordinary dependencies
 to OrphanManager instead of persisting partial state. Transaction validation,
 hash interning, coordinate allocation, and commit behavior belong to the
 [block materialization transaction](storage.md#block-materialization-transaction--settled).
+The [processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
+owns the Rebuild disposition for the incoming-boundary-identity violation.
 
 ### Catchup filtering and overlap
 
@@ -176,10 +178,10 @@ struct PersistedBlock {
 
 Every `PersistedBlock` delivered by BlockProcessor represents a non-Genesis
 block and therefore has a mandatory selected parent. Genesis never enters the
-ordinary `BlockMaterialization` or BlockProcessor-to-consumer `PersistedBlock`
-path; VspcProcessor instead constructs its initial history record from the
-Begin anchor. No VSPC `added` or `removed` member is Genesis, although a derived
-VSPC source may be Genesis.
+ordinary BlockProcessor-to-consumer `PersistedBlock` path; VspcProcessor
+instead constructs its initial history record from the Begin anchor. No VSPC
+`added` or `removed` member is Genesis, although a derived VSPC source may be
+Genesis.
 
 After a definite successful insert, BlockProcessor sends the block's
 `BlockCommitted` graph update before delivering `PersistedBlock` to
@@ -248,8 +250,9 @@ OrphanManager. It has:
 OrphanManager sends Resolve work and `Cancel(hash)` when a block arrives
 naturally. It owns the pending set and prevents duplicate requests. Resolver
 results return on BlockProcessor's Intern/resolved lane, never its
-notification lane. The resolver validates that GetBlock returned the
-requested hash.
+notification lane. The resolver uses NodeService's normalized
+[`full_block`](node-service.md#individual-full-block-getblock) operation; raw
+GetBlock results never reach BlockProcessor.
 
 `resolution_pending` remains set until the manager observes `AddOrphan` or
 `BlockPersisted`. It is a set, not a queue or map.

@@ -103,6 +103,7 @@ enum Component {
 }
 enum ServiceKind { Node, Storage }
 enum NotificationStream { BlockAdded, Vspc, Both }
+enum NotificationInputKind { MalformedBlockAdded }
 enum MalformedVspcResponseReason {
     RemovedChainWithoutAddedPath,
     NonAdvancingAddedCursor,
@@ -123,6 +124,7 @@ enum PersistenceFault {
 enum FaultKind {
     ServiceGenerationLost(ServiceKind),
     NotificationContinuityLost(NotificationStream),
+    NotificationInputInvalid(NotificationInputKind),
     RecoveryInputInvalid(RecoveryInputKind),
     ReconciliationFailed,
     MaterialityViolation,
@@ -167,6 +169,12 @@ do.
   resolver-confirmed unavailable dependency each require Rebuild directly:
   the DB can no longer be trusted against node state. RPC connection failure
   is not proof of dependency unavailability.
+- A block whose own hash is already a permanent boundary identity reports
+  `MaterialityViolation` and requires Rebuild directly.
+- A malformed BlockAdded notification reports
+  `NotificationInputInvalid(MalformedBlockAdded)`, disables notification
+  routing, and requires Resync. It does not retire the validated RPC generation
+  or consume the malformed recovery-response budget.
 
 When the same validated RPC and DB generations remain Ready, whole-attempt
 recovery retries use nominal delays `1s, 2s, 4s, 8s, 16s, 30s`, capped at
@@ -194,6 +202,13 @@ retired handle. NodeService's reconnect backoff supplies the delay, so the
 general recovery Retry delay is not added. A removed-chain-without-added-path
 notification remains source-specific: it requires Resync and does not consume
 the malformed recovery-response budget.
+
+A malformed DependencyResolver full-block response during Catchup is
+`MalformedGetBlock` under that shared recovery budget. The same response in
+Live retires the exact RPC generation and requires Resync; because no recovery
+attempt was active, it does not consume the recovery-response budget. A
+definitive not-found dependency remains `DependencyUnavailable` and requires
+Rebuild instead of being classified as malformed.
 
 Storage owns local transaction retries and ambiguous-outcome handling; see
 [storage.md](storage.md#transaction-retries). Once classified across the
@@ -363,7 +378,7 @@ malformed-recovery-input policy above. Rebuild occurs as a separate run.
 ResyncEngine obtains the mandatory current pruning-point block once through
 `ValidatedRpcClient::current_pruning_point_block()` on the Rebuild run's exact
 validated RPC generation. After the API Reset barrier it passes that same
-validated `SharedNodeBlock` to the only storage API that clears processing
+validated `ValidatedNodeBlock` to the only storage API that clears processing
 data:
 
 ```rust

@@ -196,9 +196,11 @@ Disabled | Enabled | Retired
 - Enabled routes with nonblocking bounded sends.
 - A full destination channel means notification loss: disable both streams and
   report `Require(Resync)`.
-- An Enabled `BlockAdded` without `block.verbose_data` cannot provide the
-  selected parent and merge sets required for materialization and reports
-  `Require(Resync)`.
+- An Enabled `BlockAdded` is normalized to `ValidatedNodeBlock` before bounded
+  delivery. On normalization failure, disable both streams, enqueue no block,
+  and report `NotificationInputInvalid(MalformedBlockAdded)`; the
+  [processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
+  owns its disposition.
 - Before attempting the bounded VSPC send, classify a raw
   VirtualChainChanged notification with empty `added`. When `removed` is also
   empty, discard the valid upstream no-op: it consumes no channel capacity,
@@ -257,11 +259,27 @@ In a short Live IBD episode, connection loss or a violated stream invariant
 already causes recovery. NodeService has no separate continuous-IBD mode in
 KGI v2.
 
-Only NodeService sees raw rusty-kaspa notification types. Outside NodeService,
-the normalized payload is the shared
-[`VspcChange`](domain-model.md#vspc-value-types--settled).
+Only NodeService sees raw rusty-kaspa notification and full-block types.
+Outside NodeService, block payloads use the shared
+[`ValidatedNodeBlock`](domain-model.md#shared-value-types--settled), and VSPC
+payloads use [`VspcChange`](domain-model.md#vspc-value-types--settled).
 
 ### RPC normalization
+
+#### Full-block normalization
+
+NodeService is the sole constructor of `ValidatedNodeBlock`. One common
+normalizer extracts the flattened fields and enforces the intrinsic validity
+contract owned by the
+[domain model](domain-model.md#shared-value-types--settled). Raw `RpcBlock`,
+optional verbose data, and an unvalidated shared-block wrapper never cross the
+NodeService boundary. Transactions are ignored.
+
+The operation that obtained a raw block additionally validates its contextual
+expected hash. Source-specific response classification remains outside the
+common normalizer: GetBlocks, individual GetBlock, current-pruning-point, and
+BlockAdded inputs retain their distinct fault classifications and lifecycle
+dispositions.
 
 #### Current pruning-point block
 
@@ -272,7 +290,7 @@ operation on the run's exact validated generation:
 impl ValidatedRpcClient {
     async fn current_pruning_point_block(
         &self,
-    ) -> Result<SharedNodeBlock, NodeError>;
+    ) -> Result<ValidatedNodeBlock, NodeError>;
 }
 ```
 
@@ -280,15 +298,16 @@ The operation calls `GetBlockDagInfo`, requires the response network to equal
 `ValidatedNodeInfo.network_id`, reads a non-ORIGIN `pruning_point_hash`, and
 then calls `GetBlock(pruning_point_hash, include_transactions = false)` on the
 same generation. The returned block hash must equal `pruning_point_hash`, and
-the header plus verbose data must supply the direct parents, selected parent,
-ordered blue/red merge sets, DAA score, blue score, and blue work required by
-reconciliation and `rebuild_from_pruning_point`. Transactions are not required.
+the result must pass common full-block normalization. This includes the exact
+validated-Genesis ORIGIN exception and the ordinary non-Genesis parent
+relationship.
+
 The [processing lifecycle](processing-lifecycle.md) owns when Resync and Rebuild
 invoke this operation and how they consume its normalized result.
 
 A mismatched response network, ORIGIN pruning-point hash, wrong returned block
-hash, definitive not-found for the advertised pruning point, or missing required
-block fields is
+hash, definitive not-found for the advertised pruning point, or failure of
+common full-block normalization is
 `RecoveryInputInvalid(MalformedPruningPointResponse)`. The exact validated RPC
 generation is retired and the shared malformed recovery-input policy applies.
 A transport failure, cancellation, or generation loss remains a session fault
@@ -304,18 +323,19 @@ and does not establish a reconciliation mismatch.
 - duplicate hashes are invalid;
 - strip the inclusive `low_hash` entry;
 - accept zero normalized blocks after stripping that entry;
-- return `Vec<SharedNodeBlock>`; a parallel hash vector is unnecessary.
+- normalize every remaining full block before returning any of them; and
+- return `Vec<ValidatedNodeBlock>`; a parallel hash vector is unnecessary.
 
 Unequal vectors, an empty raw response, a first hash other than `low_hash`, a
-hash/block disagreement, or any duplicate is
+hash/block disagreement, any duplicate, or any member that fails common
+full-block normalization is
 `RecoveryInputInvalid(MalformedGetBlocks)` when encountered by the recovery
-pump. A valid anchor-only response that normalizes to zero blocks is not
-malformed.
+pump. Reject the complete page before advancing its cursor or sending any
+member to a processor. A valid anchor-only response that normalizes to zero
+blocks is not malformed.
 
 KGI requests full RPC blocks directly. Fetching hashes and then calling
 `GetBlock` one by one has no accepted benefit for this local-node deployment.
-DependencyResolver uses individual `GetBlock` calls for missing dependencies
-without holding database transactions.
 For `GetVirtualChainFromBlockV2`, request
 `min_confirmation_count = None` and
 `data_verbosity_level = Some(RpcDataVerbosityLevel::None)`. KGI relies on this
@@ -354,11 +374,34 @@ response and a returned DAA score that disagrees with committed storage remain
 reconciliation evidence under the processing-lifecycle contract rather than
 malformed transport shapes.
 
+#### Individual full-block GetBlock
+
+DependencyResolver obtains missing dependencies through the run's exact
+validated generation without holding a database transaction:
+
+```rust
+impl ValidatedRpcClient {
+    async fn full_block(
+        &self,
+        hash: BlockHash,
+    ) -> Result<ValidatedNodeBlock, NodeError>;
+}
+```
+
+The operation calls `GetBlock(hash, include_transactions = false)`, requires
+the returned hash to equal `hash`, and applies common full-block normalization.
+A wrong hash or normalization failure is
+`RecoveryInputInvalid(MalformedGetBlock)`. A definitive not-found result is
+reported separately so DependencyResolver can classify dependency
+unavailability. Transport, cancellation, and generation loss remain session
+faults. The processing lifecycle owns the recovery-versus-Live disposition of
+the malformed response.
+
 ### Runtime protocol violation and generation retirement
 
-`ValidatedRpcClient` recognizes malformed raw recovery RPC responses while
+`ValidatedRpcClient` recognizes malformed raw RPC responses while
 validating and normalizing them and returns the typed violation without a
-normalized value. The calling recovery owner reports that violation to
+normalized value. The calling RPC owner reports that violation to
 NodeService before reporting its owner-directed fault. NodeService atomically
 retires that exact published
 `ValidatedRpcClient`, retires its NotificationRouter, prevents all clones from
@@ -367,8 +410,8 @@ enters `Unavailable`. A stale report for a generation already replaced cannot
 retire the replacement. NodeService reconnects and performs complete validation
 before publishing another generation.
 
-The malformed response is never retried in place. Supervisor owns the shared
-cross-generation retry budget and Fatal threshold defined by the
+The malformed response is never retried in place. Supervisor owns the recovery
+budget and source/phase dispositions defined by the
 [processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled).
 Malformed Genesis-discovery output occurs before a validated generation is
 published and remains an ordinary NodeService validation failure under its

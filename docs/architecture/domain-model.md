@@ -4,7 +4,8 @@
 
 This document owns shared identities and graph vocabulary used by more than
 one component. It defines what the values mean. Storage owns their persistent
-representation and validation; processing documents own how workers use them.
+representation and database-relative validation; NodeService owns raw-node
+normalization; processing documents own how workers use them.
 
 Rust declarations follow the semantic-shape convention in the
 [architecture index](README.md#contract-conventions-and-scope).
@@ -12,7 +13,17 @@ Rust declarations follow the semantic-shape convention in the
 ## Shared value types — settled
 
 ```rust
-type SharedNodeBlock = Arc<RpcBlock>;
+struct ValidatedNodeBlock {
+    hash: BlockHash,
+    selected_parent: BlockHash,
+    direct_parents: Vec<BlockHash>,
+    blue_merge_set: Vec<BlockHash>,
+    red_merge_set: Vec<BlockHash>,
+    timestamp: Timestamp,
+    daa_score: u64,
+    blue_score: u64,
+    blue_work: BlueWork,
+}
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 struct ConsensusOrder {
@@ -36,6 +47,21 @@ struct MaterializedSyncAnchor {
     blue_score: u64,
 }
 ```
+
+`ValidatedNodeBlock` is the sole full-block value allowed to cross from
+NodeService into processing or storage. It is a flattened normalized value,
+not a wrapper around the raw RPC block. NodeService constructs it only after
+the raw header and verbose data supply every field above, all reported and
+computed hashes agree, direct parents are unique, and no direct-parent or
+merge-set reference contradictorily names the block itself. Only level-zero
+parents become `direct_parents`.
+
+For an ordinary non-Genesis block, `selected_parent` must occur in
+`direct_parents`. The sole exception is the exact Genesis hash discovered for
+the validated RPC generation: Genesis has synthetic ORIGIN as selected parent
+and no actual direct parents. Ordered merge-set vectors preserve node order.
+The type proves intrinsic node-block validity only; it makes no claim that any
+referenced hash is materialized in the current database.
 
 `ConsensusOrder` sorts lexicographically by `(blue_work, hash)`. `VspcPoint`
 contains that order and must not duplicate the block hash. Explicit `hash()`,
