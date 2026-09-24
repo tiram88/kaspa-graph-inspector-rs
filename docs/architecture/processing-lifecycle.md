@@ -103,12 +103,14 @@ enum Component {
 }
 enum ServiceKind { Node, Storage }
 enum NotificationStream { BlockAdded, Vspc, Both }
-enum NotificationInputKind { MalformedBlockAdded }
+enum NotificationInputKind { MalformedBlockAdded, MalformedVspcChange }
 enum MalformedVspcResponseReason {
     RemovedChainWithoutAddedPath,
     NonAdvancingAddedCursor,
     DuplicateChainMember,
     RemovedAddedIntersection,
+    LowHashPathMismatch,
+    SelectedParentPathDiscontinuity,
 }
 enum RecoveryInputKind {
     MalformedPruningPointResponse,
@@ -175,6 +177,9 @@ do.
   `NotificationInputInvalid(MalformedBlockAdded)`, disables notification
   routing, and requires Resync. It does not retire the validated RPC generation
   or consume the malformed recovery-response budget.
+- A malformed VSPC notification reports
+  `NotificationInputInvalid(MalformedVspcChange)` and requires Resync under the
+  same notification-source policy.
 
 When the same validated RPC and DB generations remain Ready, whole-attempt
 recovery retries use nominal delays `1s, 2s, 4s, 8s, 16s, 30s`, capped at
@@ -187,8 +192,11 @@ consume or wait on the Retry sequence. All waits are lifecycle-cancellable.
 Malformed recovery RPC responses use a separate shared budget across
 `MalformedPruningPointResponse`, `MalformedGetBlock`, `MalformedGetBlocks`, and
 every `MalformedVspcResponse` reason. Every occurrence first retires the exact
-`ValidatedRpcClient` generation that produced it and discards the response
-without advancing a cursor or sending processor input. The first three
+`ValidatedRpcClient` generation that produced it. A violation observable in
+the raw response discards that response without advancing a cursor or sending
+processor input. `SelectedParentPathDiscontinuity` can be detected only after
+dispatch; it prevents the atomic VSPC mutation, aborts the complete attempt,
+and discards its provisional cursor and queued synthetic suffix. The first three
 occurrences before `EnteredLive` each abort the complete attempt with `Retry`;
 the fourth is `Fatal`. The counter is shared across all recovery-input kinds
 and VSPC reasons and survives replacement RPC generations, so reconnecting
@@ -199,9 +207,9 @@ not.
 Each permitted malformed-input Retry waits for NodeService to publish a new
 validated RPC generation and never reuses or reissues the operation on the
 retired handle. NodeService's reconnect backoff supplies the delay, so the
-general recovery Retry delay is not added. A removed-chain-without-added-path
-notification remains source-specific: it requires Resync and does not consume
-the malformed recovery-response budget.
+general recovery Retry delay is not added. A malformed VSPC notification
+is a notification-input fault and therefore does not consume the malformed
+recovery-response budget.
 
 A malformed DependencyResolver full-block response during Catchup is
 `MalformedGetBlock` under that shared recovery budget. The same response in
@@ -434,11 +442,9 @@ response. It obtains both through the exact
 [NodeService RPC contract](node-service.md#rpc-normalization), including the
 pinned VSPC request arguments and advancing-cursor assumption. An empty V2
 page is a pump/Catchup hint, not a VSPC change.
-A response with empty `added` and nonempty `removed` violates the pinned sink
-monotonicity invariant. `ValidatedRpcClient` rejects it as
-`MalformedVspcResponse(RemovedChainWithoutAddedPath)` without returning a
-normalized change. ResyncEngine therefore dispatches nothing, does not advance
-the cursor, and follows the shared malformed recovery-response policy above.
+When NodeService rejects a VSPC response as malformed, ResyncEngine dispatches
+nothing, does not advance the cursor, and follows the shared malformed
+recovery-response policy above.
 
 Both synthetic streams start from the committed `MaterializedSyncAnchor` sink:
 
@@ -464,8 +470,14 @@ resume the page suffix
 failures either directly request recovery or cascade into an unprocessable
 VSPC backlog that requests recovery.
 
-Each incremental VSPC request uses the preceding response destination as its
-next `low_hash`. This makes the synthetic VSPC stream ordered and gapless.
+After NodeService completes every hash-observable continuity check, each
+incremental VSPC request uses the preceding response destination as its
+provisional next `low_hash`. Selected-parent path continuity is validated
+later by the
+[atomic VSPC transaction](storage.md#atomic-vspc-transaction--settled). Its
+typed failure aborts the run and discards this in-memory cursor and every later
+queued synthetic response. Only definitely committed transitions establish the
+ordered, gapless synthetic VSPC stream.
 
 Notifications go directly to processors; the engine never journals or
 redispatches them.

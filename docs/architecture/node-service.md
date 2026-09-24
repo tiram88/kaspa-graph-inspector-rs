@@ -206,8 +206,10 @@ Disabled | Enabled | Retired
   empty, discard the valid upstream no-op: it consumes no channel capacity,
   earns no overlap credit, changes no committed state, and requests no
   recovery. When `removed` is nonempty, do not enqueue it; disable routing and
-  report `Require(Resync)` because the notification violates selected-sink
-  monotonicity.
+  report `NotificationInputInvalid(MalformedVspcChange)` because the
+  notification violates selected-sink monotonicity. The
+  [processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
+  owns its disposition.
 - Retired never routes again.
 
 The subscription state belongs to `ValidatedRpcClient` and cannot outlive its
@@ -355,14 +357,22 @@ response violations precisely:
 
 ```text
 empty added with nonempty removed -> RemovedChainWithoutAddedPath
-added.last() equals low_hash      -> NonAdvancingAddedCursor
 duplicate within either vector    -> DuplicateChainMember
 hash present in both vectors      -> RemovedAddedIntersection
+added.last() equals low_hash      -> NonAdvancingAddedCursor
+removed.first() differs from low_hash, or low_hash occurs earlier in added
+                                  -> LowHashPathMismatch
 ```
 
-Each is
+Apply the table in order so an input with more than one defect has one stable
+reason. Each is
 `RecoveryInputInvalid(MalformedVspcResponse(reason))` and follows the shared
-malformed recovery-response policy.
+[malformed recovery-response policy](processing-lifecycle.md#supervisor-and-recovery-intent--settled).
+Evaluate all of these hash-observable conditions before returning a normalized
+response. Internal selected-parent continuity is not observable from the RPC
+hash vectors; the
+[atomic VSPC transaction](storage.md#atomic-vspc-transaction--settled) owns its
+validation.
 
 #### Individual recovery GetBlock
 

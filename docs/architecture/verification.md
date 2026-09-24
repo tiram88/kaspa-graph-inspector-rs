@@ -163,12 +163,14 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
    `data_verbosity_level = Some(RpcDataVerbosityLevel::None)`. Mocked valid
    complete-prefix and advancing-cursor responses exercise KGI's pump behavior.
    Reject a removed chain without an added path, duplicate members,
-   removed/added intersection, and a nonadvancing nonempty added cursor as the
-   corresponding `MalformedVspcResponse` reason, with generation retirement
-   and no cursor advancement.
+   removed/added intersection, a nonadvancing nonempty added cursor, a nonempty
+   removed path whose first hash differs from `low_hash`, and any occurrence of
+   `low_hash` in `added` as the corresponding `MalformedVspcResponse` reason,
+   with generation retirement and no cursor advancement.
 7. Mocked notification and VSPC V2 responses with a nonempty removed chain and
    an empty added path. Assert the source-specific dispositions: a notification
-   requires Resync; `ValidatedRpcClient` rejects a synthetic response as
+   reports `NotificationInputInvalid(MalformedVspcChange)` and requires Resync;
+   `ValidatedRpcClient` rejects a synthetic response as
    `MalformedVspcResponse(RemovedChainWithoutAddedPath)` without returning a
    normalized change, and ResyncEngine follows the shared malformed
    recovery-response policy without dispatch or cursor advancement.
@@ -273,9 +275,11 @@ emits no milestone, while restart after a committed Genesis rebuild derives
 PostSeal from storage and proceeds through ordinary Resync.
 
 Verify the [atomic VSPC transaction](storage.md#atomic-vspc-transaction--settled)
-for source continuity, direct-chain materiality, duplicate/intersection
-rejection, atomic membership and coloring changes, merge-set members
-represented only by boundary identity, and final level-score publication.
+for source continuity, every removed and added selected-parent relationship,
+the removed/added pivot, direct-chain materiality, duplicate/intersection
+rejection, typed pre-mutation `VspcPathDiscontinuity`, atomic membership and
+coloring changes, merge-set members represented only by boundary identity, and
+final level-score publication.
 
 Verify [transaction retries](storage.md#transaction-retries) with PostgreSQL
 integration fixtures. Only SQLSTATE `40001` and `40P01` retry the complete
@@ -376,11 +380,16 @@ with injected clocks and deterministic jitter:
 - recovery requirements do not consume Retry backoff;
 - one shared counter across malformed pruning-point, GetBlock, GetBlocks, and
   VSPC response kinds and all VSPC reasons, including
-  `RemovedChainWithoutAddedPath`: each of the first three occurrences retires
-  its producing generation and retries only after replacement, the fourth is
-  Fatal, replacement generations and stronger recovery do not reset the
-  counter, `EnteredLive` does reset it, and NodeService reconnect delay is not
-  combined with the general recovery Retry delay; and
+  `RemovedChainWithoutAddedPath`, `LowHashPathMismatch`, and the later
+  `SelectedParentPathDiscontinuity`: each of the first three occurrences
+  retires its producing generation and retries only after replacement, the
+  fourth is Fatal, replacement generations and stronger recovery do not reset
+  the counter, `EnteredLive` does reset it, and NodeService reconnect delay is
+  not combined with the general recovery Retry delay;
+- later synthetic path discontinuity rolls back without sink advancement and
+  discards the provisional cursor and queued suffix, while the same notification
+  fault requires Resync without retiring the RPC generation or consuming the
+  malformed-response budget; and
 - typed fault kinds, never diagnostics, drive policy and counters.
 
 Verify [teardown](processing-lifecycle.md#teardown-and-delivery-semantics--settled)
@@ -430,7 +439,10 @@ with:
 - destination-equal discard without creating an empty normalized change;
 - absence of overlap credit for unresolved or filtered candidates;
 - missing nonretained merge-set members at the PP boundary; and
-- direct nonmaterialized chain members requiring Rebuild.
+- direct nonmaterialized chain members requiring Rebuild;
+- a resolved synthetic source mismatch classified as
+  `SelectedParentPathDiscontinuity` rather than retained pending; and
+- source-specific mapping of the storage `VspcPathDiscontinuity` error.
 
 ## API and Web
 

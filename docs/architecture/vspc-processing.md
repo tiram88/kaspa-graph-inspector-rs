@@ -168,6 +168,11 @@ Endpoint `VspcPoint` consensus order comes from `PersistedBlock` history. The
 database batch resolves member IDs; it does not derive endpoint order or load
 merge sets for the processor.
 
+The head synthetic candidate must continue the committed synthetic sink. Once
+its source resolves, a mismatch is a malformed synthetic path rather than a
+pending competing candidate. Notifications retain the existing pending rule
+because their arrival order need not match committed order.
+
 A block named directly in `added` or `removed` that is confirmed
 nonmaterialized violates the retained-graph invariant and requests
 `Require(Rebuild)`. The database can no longer be trusted against node state.
@@ -175,10 +180,18 @@ An identity-only member appearing only in an added block's merge set is an
 outside-boundary reference and is ignored by coloring. These cases are not
 equivalent.
 
-The storage transaction validates source continuity, every direct chain
-member's materiality, and vector consistency. Its complete persistence and
-coloring behavior is defined by the
+The storage transaction owns database-relative validation and all persistence
+and coloring behavior; see the
 [atomic VSPC transaction](storage.md#atomic-vspc-transaction--settled).
+For a synthetic candidate, a resolved-source mismatch or
+`VspcPathDiscontinuity` is
+`RecoveryInputInvalid(MalformedVspcResponse(SelectedParentPathDiscontinuity))`.
+For a notification candidate, it is
+`NotificationInputInvalid(MalformedVspcChange)`. Neither failure advances the
+committed sink. The
+[processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
+owns their distinct dispositions. A confirmed nonmaterialized direct chain
+member retains the distinct Rebuild disposition above.
 Definite readiness commits through
 `ValidatedDbClient::apply_vspc_change(ready)` and adopts the returned
 destination as the new committed sink.

@@ -789,7 +789,27 @@ impl ValidatedDbClient {
 Storage requires the supplied source to equal the currently committed sink.
 Every block directly named in `removed` or `added` must be materialized; the
 vectors contain no duplicates or intersection. Storage loads each added
-block's merge sets internally.
+block's merge sets internally. Before mutation it also loads the persisted
+selected-parent identity for every directly named chain member and validates:
+
+```text
+removed is empty:
+    selected_parent(added[0]) == source
+
+removed is nonempty:
+    removed[0] == source
+    selected_parent(removed[i]) == removed[i + 1]
+    selected_parent(removed.last()) == selected_parent(added[0])
+
+for every added i > 0:
+    selected_parent(added[i]) == added[i - 1]
+```
+
+Every admitted change has nonempty `added`, so each expression above is
+defined. Any failed relationship returns the typed
+`VspcPathDiscontinuity` storage error before mutation. The
+[VspcProcessor contract](vspc-processing.md#readiness-and-materiality--settled)
+owns source-specific classification of that error.
 
 The transaction applies, in order:
 
