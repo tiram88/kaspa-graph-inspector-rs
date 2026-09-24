@@ -34,13 +34,13 @@ store `VspcChange` directly; there is no `PendingVspcChange` wrapper or
 Every admitted nonempty change has a nonempty `added` vector. A change with a
 nonempty removed chain and an empty added path is impossible under the
 selected-sink monotonicity assumption reviewed by the
-[PUAR](verification.md#pinned-upstream-assumption-review-policy) and has no
-invented fallback destination. NodeService rejects that notification shape with
-`Require(Resync)`. For a synthetic VSPC V2 response, `ValidatedRpcClient`
-rejects the same shape as
-`MalformedVspcResponse(RemovedChainWithoutAddedPath)` without returning a
-normalized change. ResyncEngine follows the shared malformed recovery-response
-policy. Neither source admits it to VspcProcessor.
+[PUAR](verification.md#current-puar-result) and has no invented fallback
+destination. The [NotificationRouter](node-service.md#notificationrouter) and
+[RPC normalization](node-service.md#rpc-normalization) contracts own
+source-specific rejection, and the
+[processing lifecycle](processing-lifecycle.md#resync-blockvspc-pump--settled)
+owns the resulting recovery disposition. Neither source admits the shape to
+VspcProcessor.
 
 NodeService also discards a raw notification with both vectors empty before
 constructing or sending `VspcChange`. It earns no overlap credit and consumes

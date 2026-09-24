@@ -34,26 +34,40 @@ for custom builds.
 
 The PUAR checklist is:
 
-1. `GetBlocks(None, false, false)` returns the configured Genesis hash first
-   and returns no blocks.
-2. Header-only `GetBlock` supplies the required GhostDAG data and establishes
+1. For [Genesis discovery](node-service.md#genesis-discovery),
+   `GetBlocks(None, false, false)` returns the configured Genesis hash first and
+   returns no blocks.
+2. For the NodeService
+   [individual recovery GetBlock](node-service.md#individual-recovery-getblock)
+   used by [Resync preparation](processing-lifecycle.md#resync-preparation),
+   header-only `GetBlock` supplies the required GhostDAG data and establishes
    that the returned block is recognized as a GetBlocks low hash.
-3. The `L + 1` GetBlocks core budget, consensus-topological ordering, page
+3. For the NodeService
+   [GetBlocks normalization](node-service.md#getblocks-and-vspc-recovery-responses)
+   used by the [Catchup trigger](processing-lifecycle.md#catchup-trigger), the
+   `L + 1` GetBlocks core budget, consensus-topological ordering, page
    construction, global-maximum fallback premise, and the `< 3` normalized
-   length sink-reaching premise match the Catchup design.
-4. Virtual selected-sink behavior preserves the documented removed/added
+   length sink-reaching premise match the design.
+4. For [notification routing](node-service.md#notificationrouter) and
+   [VSPC change semantics](vspc-processing.md#change-semantics--settled),
+   virtual selected-sink behavior preserves the documented removed/added
    ordering, excludes changes with a nonempty removed chain and an empty added
    path, can emit the documented fully empty no-op, and never places Genesis in
    `added` or `removed`.
-5. BlockAdded duplicate and verbose-data behavior matches NodeService and
-   BlockProcessor assumptions, including the enrichment-failure form without
-   verbose data.
-6. Exact-network, unsupported-testnet fallback, and devnet/simnet override
+5. For [notification routing](node-service.md#notificationrouter) and
+   [block overlap](block-processing.md#catchup-filtering-and-overlap),
+   BlockAdded duplicate and verbose-data behavior matches those contracts,
+   including the enrichment-failure form without verbose data.
+6. For NodeService
+   [consensus parameter resolution](node-service.md#consensus-parameter-resolution),
+   exact-network, unsupported-testnet fallback, and devnet/simnet override
    resolution produce the documented local `bps`, `mergeset_size_limit`, and
    `anticone_finalization_depth` values. The review records that RPC exposes no
    comparison with the node's effective overrides; it does not describe these
    local values as node-validated.
-7. VSPC V2 with `min_confirmation_count = None` and
+7. For NodeService
+   [RPC normalization](node-service.md#getblocks-and-vspc-recovery-responses),
+   VSPC V2 with `min_confirmation_count = None` and
    `RpcDataVerbosityLevel::None` preserves the documented batching, complete
    removed suffix, minimal acceptance-data envelope, complete-prefix
    shortening, and advancing cursor behavior.
@@ -87,6 +101,20 @@ A report does not change the reference pin or architecture automatically.
 implementation proceeds. Changing the reference revision requires a new PUAR;
 otherwise repeat the review only when a compatibility problem or relevant
 upstream change gives a concrete reason.
+
+### Current PUAR result
+
+Architecture accepts the
+[24 September 2026 PUAR](../reviews/2026-09-24-rusty-kaspa-c338d495-assumptions.md)
+against the full pinned revision above. All seven checklist items are
+`Confirmed`; none is `Not confirmed` or `Contradicted`. The focused contracts
+may therefore rely on those reviewed upstream behaviors for the pinned
+revision, subject to their stated KGI validation and recovery rules.
+
+This section is the sole normative owner of the PUAR acceptance status. The
+report remains non-normative source analysis evidence. The accepted result does
+not extend to another rusty-kaspa revision, a custom build, or a connected
+node's undisclosed effective overrides.
 
 ### Accepted unverified upstream risk: stale-tip enumeration
 

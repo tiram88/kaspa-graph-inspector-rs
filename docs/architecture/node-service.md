@@ -144,11 +144,11 @@ divergence warning that logs the exact `NetworkId`, the parameter source, and
 all three values KGI will use, then processing continues. Mainnet does not emit
 this warning because the official rusty-kaspa daemon rejects parameter
 overrides there. The
-[PUAR](verification.md#pinned-upstream-assumption-review-policy) checks local
-resolution and values at the reference revision. It does not claim equality
-with a connected node or custom build. Correct processing requires the node's
-effective values to match the selected local values; divergence is an accepted
-operator risk rather than a detectable runtime rejection.
+[PUAR](verification.md#current-puar-result) checks local resolution and values
+at the reference revision. It does not claim equality with a connected node or
+custom build. Correct processing requires the node's effective values to match
+the selected local values; divergence is an accepted operator risk rather than
+a detectable runtime rejection.
 
 ### Genesis discovery
 
@@ -169,12 +169,13 @@ GetBlocks {
 ```
 
 KGI relies on `None` selecting the node's configured Genesis as the low hash
-and the first returned `block_hashes` member being that Genesis. The PUAR
-checks this upstream assumption against the reference revision. Validation
-requires a nonempty hash vector and an empty block vector, then copies the first
-hash into `ValidatedNodeInfo.genesis_hash`. Transport failure or malformed
-output fails that validation attempt; NodeService never guesses or substitutes
-a locally known Genesis hash.
+and the first returned `block_hashes` member being that Genesis. The
+[PUAR](verification.md#current-puar-result) checks this upstream assumption
+against the reference revision. Validation requires a nonempty hash vector and
+an empty block vector, then copies the first hash into
+`ValidatedNodeInfo.genesis_hash`. Transport failure or malformed output fails
+that validation attempt; NodeService never guesses or substitutes a locally
+known Genesis hash.
 
 This discovery call is deliberately distinct from `get_blocks` normalization
 below. It neither constructs a synchronization page nor applies the explicit
@@ -246,12 +247,13 @@ recovery contracts apply; see the
 [processing lifecycle](processing-lifecycle.md#recovery-scope-and-omitted-body-tips).
 Disabling is an immediate local cutoff, not a quiescence or transport fence.
 
-Pinned rusty-kaspa inspection establishes that virtual processing can emit a
-fully empty VirtualChainChanged notification when processing a side block
-does not move the selected-chain sink. This notification filter is distinct
-from handling an empty VSPC V2 RPC page in the synchronization pump. Pinned
-sink selection cannot produce a notification with a nonempty removed chain and
-an empty added path; that shape is the fault above, not another no-op.
+The [PUAR](verification.md#current-puar-result) establishes that virtual
+processing can emit a fully empty VirtualChainChanged notification when
+processing a side block does not move the selected-chain sink. This
+notification filter is distinct from handling an empty VSPC V2 RPC page in the
+synchronization pump. The reviewed sink selection cannot produce a notification
+with a nonempty removed chain and an empty added path; that shape is the fault
+above, not another no-op.
 
 In a short Live IBD episode, connection loss or a violated stream invariant
 already causes recovery. NodeService has no separate continuous-IBD mode in
@@ -324,9 +326,10 @@ combination preserving a minimal acceptance-data envelope and an advancing
 `10 * mergeset_size_limit`. This limit bounds `added`, while the complete
 `removed` suffix is not batch-limited. The same numeric budget bounds merged
 blocks loaded for acceptance data; the resulting acceptance-data length may
-shorten `added`, but only to a complete prefix. The PUAR checks these upstream
-assumptions against the reference revision; KGI-owned request construction and
-response handling are covered by
+shorten `added`, but only to a complete prefix. The
+[PUAR](verification.md#current-puar-result) checks these upstream assumptions
+against the reference revision; KGI-owned request construction and response
+handling are covered by
 [verification.md](verification.md#nodeservice-and-rpc-behavior).
 
 For recovery VSPC V2, a fully empty response is a valid pump hint. Classify

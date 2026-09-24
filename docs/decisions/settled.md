@@ -15,6 +15,6 @@ mechanics.
 | API publication | ApiService uses Reset, PostSeal, and Live publication controls, coherent GraphEpoch replacement, a complete level-bounded head cache, and bounded historical reads. | [API](../architecture/api.md) |
 | Resource isolation | Processing has reserved capacity and priority; API pools, admission lanes, caches, and client work are bounded and degrade explicitly under saturation. | [Overview](../architecture/overview.md), [API](../architecture/api.md) |
 | Web behavior | Browser state follows API epochs and cursors, uses stable hash identity, freezes fixed views, and recognizes Genesis by zero actual direct parents. | [Web](../architecture/web.md) |
-| Verification | PUAR source analysis assesses upstream correctness assumptions against one pinned reference revision; executable evidence covers KGI-owned behavior, integration boundaries, and architecture acceptance scenarios. | [Verification](../architecture/verification.md) |
+| Verification | Verification owns the pinned PUAR policy and accepted current result; executable evidence covers KGI-owned behavior, integration boundaries, and architecture acceptance scenarios. | [Verification](../architecture/verification.md#current-puar-result) |
 
 Later standalone accepted ADRs may be added to this directory and indexed here.

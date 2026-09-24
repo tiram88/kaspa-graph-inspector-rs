@@ -328,8 +328,8 @@ A header-only node block is sufficient because no body or transactions are
 needed. KGI relies on successful GetBlock GhostDAG enrichment also
 establishing the recognition required to use the sink as a GetBlocks
 `low_hash`; the
-[PUAR](verification.md#pinned-upstream-assumption-review-policy) checks that
-upstream assumption against the reference revision.
+[PUAR](verification.md#current-puar-result) checks that upstream assumption
+against the reference revision.
 
 Resync requirements:
 
