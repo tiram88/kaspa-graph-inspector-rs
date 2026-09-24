@@ -129,11 +129,13 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
    `MalformedVspcResponse(RemovedChainWithoutAddedPath)` without returning a
    normalized change, and ResyncEngine follows the shared malformed
    recovery-response policy without dispatch or cursor advancement.
-7. The subscription activation order in
-   [NotificationRouter](node-service.md#notificationrouter): routing remains
-   Disabled until both remote starts succeed, callbacks received during that
-   interval are dropped, and neither overlap credit nor immediate recovery is
-   produced.
+7. The subscription activation order across the
+   [processing lifecycle](processing-lifecycle.md#entering-recovery-phases) and
+   [NotificationRouter](node-service.md#notificationrouter): ResyncEngine alone
+   sends both processor Catchup commands before invoking NodeService activation;
+   NodeService sends no processor command; routing remains Disabled until both
+   remote starts succeed; and callbacks received during that interval are
+   dropped without overlap credit or immediate recovery.
 
 Use injected clocks and deterministic jitter to verify the independent
 [NodeService](node-service.md#nodeservice--settled) and

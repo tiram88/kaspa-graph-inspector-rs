@@ -214,12 +214,17 @@ state with a private mutex.
 Enable ordering:
 
 ```text
-send Catchup to both processors
+precondition: ResyncEngine has sent Catchup to both processors for this run
 start BlockAdded remotely
 start VirtualChainChanged remotely
 enable router only when both succeeded
 publish subscription Enabled only when both succeeded
 ```
+
+Catchup is a caller-established lifecycle precondition, not a NodeService
+operation. ResyncEngine is the sole sender of processor commands and invokes
+NodeService subscription activation only after satisfying that precondition.
+NodeService owns the four activation steps following it.
 
 Disable ordering:
 
