@@ -49,10 +49,10 @@ Transient connection, transport, and validation-RPC failures enter
 Each actual delay uses equal jitter from 50% through 100% of the nominal
 delay, and every wait is shutdown-cancellable. Reset the sequence only after
 NodeService has remained continuously Ready for 60 seconds; opening a
-connection alone does not reset it. Network mismatch, unsupported network
-suffix, incompatible RPC API, and missing required notification capabilities
-publish terminal `Rejected` and are not retried under unchanged
-configuration.
+connection alone does not reset it. Network mismatch, incompatible RPC API,
+and missing required notification capabilities publish terminal `Rejected`
+and are not retried under unchanged configuration. Invalid local consensus
+parameter configuration fails startup as defined below.
 
 Validation requires:
 
@@ -88,20 +88,74 @@ struct KgiConsensusParams {
 ```
 
 Add copied parameters only when KGI behavior actually depends on them.
-After validating the exact `NetworkId`, obtain these values from rusty-kaspa
-`Params` for that network through `bps()`,
-`mergeset_size_limit()`, and `anticone_finalization_depth()`. Reject unsupported
-network suffixes before constructing `Params`; do not reproduce the
-merge-set-limit formula inside KGI. The
-[PUAR](verification.md#pinned-upstream-assumption-review-policy) checks the
-parameter values used by the reference revision.
+
+### Consensus parameter resolution
+
+The public RPC surface does not expose the node's effective consensus
+parameters. `NetworkId` and the RPC-discovered Genesis hash therefore validate
+network identity, but do not prove that the node uses KGI's local parameter
+values. `KgiConsensusParams` is an explicit local assumption used for recovery,
+not a node-validated property.
+
+After validating the exact `NetworkId`, resolve local rusty-kaspa `Params` as
+follows:
+
+```text
+mainnet
+    -> Params::from(network_id)
+
+locally supported testnet NetworkId
+    -> Params::from(network_id)
+    -> warn and continue
+
+unsupported testnet suffix
+    -> Params::from(NetworkType::Testnet)
+    -> warn and continue
+
+devnet or simnet with --override-params-file <path>
+    -> Params::from(network_id)
+    -> parse rusty-kaspa OverrideParams from path
+    -> Params::override_params(overrides)
+    -> warn that equality with the node cannot be verified
+
+devnet or simnet without --override-params-file
+    -> Params::from(network_id)
+    -> warn that node overrides cannot be detected
+```
+
+At the pinned rusty-kaspa revision, `Params::from(NetworkId)` panics for an
+unsupported testnet suffix rather than returning an error. The resolver checks
+local support before calling it and uses the testnet-family fallback only for
+an unsupported testnet suffix; panic catching is not control flow.
+
+`--override-params-file` is valid only for configured devnet or simnet. It uses
+the same JSON `OverrideParams` format as rusty-kaspa and is loaded once at
+process startup. It is explicitly unsupported for mainnet and every testnet
+suffix. An explicitly supplied file that is unreadable, malformed, or
+incompatible, or use of the option with an unsupported network, is a
+configuration error and never falls back silently. The file is not persisted
+in node metadata. Genesis remains RPC-discovered and is not taken from the
+file.
+
+Obtain the copied values from the resolved `Params` through `bps()`,
+`mergeset_size_limit()`, and `anticone_finalization_depth()`; do not reproduce
+either upstream formula inside KGI. Every non-mainnet network emits a
+divergence warning that logs the exact `NetworkId`, the parameter source, and
+all three values KGI will use, then processing continues. Mainnet does not emit
+this warning because the official rusty-kaspa daemon rejects parameter
+overrides there. The
+[PUAR](verification.md#pinned-upstream-assumption-review-policy) checks local
+resolution and values at the reference revision. It does not claim equality
+with a connected node or custom build. Correct processing requires the node's
+effective values to match the selected local values; divergence is an accepted
+operator risk rather than a detectable runtime rejection.
 
 ### Genesis discovery
 
 Genesis identity comes from the node, not from KGI's local consensus
 parameters. This keeps identity correct for custom devnets and new network
-suffixes whose Genesis hash KGI may not know. Availability of the other
-consensus parameters required by KGI remains a separate validation condition.
+suffixes whose Genesis hash KGI may not know. It does not validate the local
+consensus parameter assumption above.
 
 During validation of each physical RPC generation, NodeService makes this raw
 request outside the ordinary normalized block pump:

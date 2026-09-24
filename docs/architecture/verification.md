@@ -50,8 +50,11 @@ The PUAR checklist is:
 6. BlockAdded duplicate and verbose-data behavior matches NodeService and
    BlockProcessor assumptions, including the enrichment-failure form without
    verbose data.
-7. Every supported `NetworkId` resolves to the exact `bps`,
-   `mergeset_size_limit`, and `anticone_finalization_depth` values used by KGI.
+7. Exact-network, unsupported-testnet fallback, and devnet/simnet override
+   resolution produce the documented local `bps`, `mergeset_size_limit`, and
+   `anticone_finalization_depth` values. The review records that RPC exposes no
+   comparison with the node's effective overrides; it does not describe these
+   local values as node-validated.
 8. VSPC V2 with `min_confirmation_count = None` and
    `RpcDataVerbosityLevel::None` preserves the documented batching, complete
    removed suffix, minimal acceptance-data envelope, complete-prefix
@@ -102,23 +105,33 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
    empty block vector, transport failure, and malformed output. Given a valid
    response, NodeService uses its first hash without substituting a local
    Genesis constant.
-3. Given a fully empty `VirtualChainChanged`, NodeService drops it before
+3. Consensus parameter resolution uses exact `NetworkId` parameters when
+   supported. Mainnet emits no divergence warning. Every non-mainnet profile,
+   including supported testnet and simnet, warns with the exact network,
+   parameter source, and all three derived values, then continues. An
+   unsupported testnet suffix uses testnet-family defaults. Devnet and simnet
+   without `--override-params-file` use their defaults; with the option they
+   parse and apply rusty-kaspa `OverrideParams`. An unreadable, malformed, or
+   incompatible explicit file and use of the option with mainnet or any
+   testnet suffix fail configuration without fallback. No path represents the
+   selected local values as having been compared with the node.
+4. Given a fully empty `VirtualChainChanged`, NodeService drops it before
    bounded delivery with no overlap credit, processor-capacity use, or
    recovery. Distinguish it from an empty VSPC V2 RPC page.
-4. VSPC V2 request construction uses `min_confirmation_count = None` and
+5. VSPC V2 request construction uses `min_confirmation_count = None` and
    `data_verbosity_level = Some(RpcDataVerbosityLevel::None)`. Mocked valid
    complete-prefix and advancing-cursor responses exercise KGI's pump behavior.
    Reject a removed chain without an added path, duplicate members,
    removed/added intersection, and a nonadvancing nonempty added cursor as the
    corresponding `MalformedVspcResponse` reason, with generation retirement
    and no cursor advancement.
-5. Mocked notification and VSPC V2 responses with a nonempty removed chain and
+6. Mocked notification and VSPC V2 responses with a nonempty removed chain and
    an empty added path. Assert the source-specific dispositions: a notification
    requires Resync; `ValidatedRpcClient` rejects a synthetic response as
    `MalformedVspcResponse(RemovedChainWithoutAddedPath)` without returning a
    normalized change, and ResyncEngine follows the shared malformed
    recovery-response policy without dispatch or cursor advancement.
-6. The subscription activation order in
+7. The subscription activation order in
    [NotificationRouter](node-service.md#notificationrouter): routing remains
    Disabled until both remote starts succeed, callbacks received during that
    interval are dropped, and neither overlap credit nor immediate recovery is
