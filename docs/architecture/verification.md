@@ -385,6 +385,12 @@ old coherent in-flight result or a clean 503, and reopens reads after coherent
 PostSeal publication. Include query/reset races and PostgreSQL `TRUNCATE`; no
 request may observe a partial or mixed generation.
 
+Observer and API projection tests cover a non-Genesis block whose selected
+parent occurs exactly once in `direct_parents` with `is_selected = true`, plus
+Genesis with an empty `direct_parents` list and no synthetic ORIGIN parent.
+Genesis recognition must not require the public projection or Web client to
+expose or consult persisted `NodeMetadata.genesis_hash`.
+
 Browser graph tests cover the [Web contract](web.md): update acquisition,
 fixed-view freeze and follow-live behavior, stable block identity, direct
 parent rendering, and Genesis recognition from zero actual direct parents.

@@ -57,12 +57,19 @@ struct VspcCommitted {
 }
 ```
 
-The parent payload includes both direct and selected-parent coordinates
-without duplicating the selected parent. Updates for blocks outside current
-HGC still need examination: a new block can increase `levels.size` at an
-external parent endpoint used by an edge crossing the cache boundary. The
-size of an external level may be seeded by an incoming child's parent data
-and then updated monotonically when later blocks occupy it.
+The parent payload contains actual direct parents only. For every non-Genesis
+block, its selected parent is one actual direct parent and appears exactly once
+with `is_selected = true`; its coordinate can be `None` at the outside-PP
+boundary. Genesis has an empty `direct_parents` payload. Synthetic ORIGIN is
+Genesis's persisted selected-parent identity, but it is never inserted into
+`direct_parents` and never becomes a public graph edge endpoint.
+
+The payload therefore carries direct-parent coordinates and, for non-Genesis
+blocks, the selected-parent coordinate without duplication. Updates for blocks
+outside current HGC still need examination: a new block can increase
+`levels.size` at an external parent endpoint used by an edge crossing the cache
+boundary. The size of an external level may be seeded by an incoming child's
+parent data and then updated monotonically when later blocks occupy it.
 
 ApiService applies VSPC source/destination continuity:
 
@@ -105,8 +112,10 @@ instances; coordinates may diverge across independently allocated DBs.
 
 The public block projection preserves its **actual direct-parent list** even
 when some parents are outside the response or PP boundary and have no
-drawable edge. This representation allows Genesis recognition without a
-persisted network Genesis hash or a dedicated Genesis-hash API endpoint.
+drawable edge. A materialized Genesis is recognized from its empty actual
+direct-parent list. The public projection and Web client do not need to expose
+or consult the persisted `NodeMetadata.genesis_hash`, and no dedicated
+Genesis-hash API endpoint is required.
 
 ## Snapshot, revision, delta, SSE, and ETags — settled
 
