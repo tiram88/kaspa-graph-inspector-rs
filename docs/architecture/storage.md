@@ -734,10 +734,15 @@ enum ReferencePolicy {
     RequireMaterialized,
 }
 
-struct MaterializeBlockOutcome {
-    id: CompactId,
-    coordinate: BlockCoordinate,
-    inserted: bool,
+enum MaterializeBlockOutcome {
+    Inserted {
+        id: CompactId,
+        committed: BlockCommitted,
+    },
+    AlreadyMaterialized {
+        id: CompactId,
+        coordinate: BlockCoordinate,
+    },
 }
 
 enum MaterializeBlockError {
@@ -765,7 +770,9 @@ is hash/consensus-level input and contains no DB ID, level, or slot. Storage
 persists its hash, selected parent, direct parents, merge sets, timestamp, and
 DAA score; blue score and blue work remain available to processing but are not
 duplicated in the block row. Storage owns transactional ID resolution,
-coordinate allocation, initial color, and persistence.
+coordinate allocation, initial color, persistence, and construction of the
+API-owned [`BlockCommitted`](api.md#in-process-api-and-graph-observer-feed--settled)
+value for a new insertion.
 
 For every materialization, intern hashes in this order:
 
@@ -842,10 +849,21 @@ A newly inserted block starts `Gray` and outside VSPC. Parent rows contain
 each actual materialized coordinate or the outside-boundary sentinel `(0,0)`.
 Normal block materialization leaves the level DAA score at its sentinel.
 
-On definite successful insert or dedup, return `MaterializeBlockOutcome`.
-Either outcome is an authoritative materiality result. Processing owns
-publication of any resulting `PersistedBlock` and the PP-boundary phase
-transition.
+For a new insertion, construct `BlockCommitted` inside the same transaction
+from the validated block, its allocated coordinate, and every direct parent's
+resolved storage state. A materialized parent has `Some(coordinate)` and the
+`Some(levels.size)` value observed for its level in that transaction. An
+outside-boundary parent has `None` for both fields. Preserve the validated
+direct-parent sequence and mark its selected parent. Return the `Inserted`
+outcome, including that complete payload, only after definite commit. The
+payload therefore describes the same committed state as the insertion; no
+post-commit projection read is allowed.
+
+An already materialized own hash returns `AlreadyMaterialized` with its ID and
+coordinate. It carries no `BlockCommitted` because deduplication creates no
+graph mutation. Either outcome is an authoritative materiality result.
+Processing owns publication of the returned observer payload, any resulting
+`PersistedBlock`, and the PP-boundary phase transition.
 
 ## Atomic VSPC transaction — settled
 

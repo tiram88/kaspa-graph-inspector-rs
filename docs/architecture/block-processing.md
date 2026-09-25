@@ -193,12 +193,14 @@ constructs its initial history record from the Begin anchor. No
 VSPC `added` or `removed` member is Genesis, although a derived VSPC source may
 be Genesis.
 
-After a definite successful insert, BlockProcessor sends the block's
-`BlockCommitted` graph update before delivering `PersistedBlock` to
+After `materialize_block` returns `Inserted`, BlockProcessor forwards its
+returned `BlockCommitted` value before delivering `PersistedBlock` to
 VspcProcessor and OrphanManager. This preserves graph observer causal order.
-A dedup produces no new graph mutation but still delivers `PersistedBlock`.
-The [API contract](api.md#in-process-api-and-graph-observer-feed--settled)
-owns observer invalidation when graph delivery fails.
+`AlreadyMaterialized` produces no graph mutation but still delivers
+`PersistedBlock`. If observer delivery fails, BlockProcessor sets the API
+invalid flag and continues with `PersistedBlock` delivery; the
+[API contract](api.md#in-process-api-and-graph-observer-feed--settled) owns the
+resulting reload behavior.
 
 `PersistedBlock` delivery is asynchronous but cannot be silently lost after a
 successful commit. A full bounded destination loses session continuity and

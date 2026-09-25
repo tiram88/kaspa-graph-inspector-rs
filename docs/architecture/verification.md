@@ -329,6 +329,14 @@ the block's own hash. Under `AllowBoundaryIdentities`, existing identity-only
 references and newly absent references succeed as boundary leaves and do not
 produce that strict-policy result.
 
+For an inserted block, verify that the returned `BlockCommitted` contains the
+new coordinate plus every direct parent's coordinate and level size from the
+same committed transaction, with both optional fields absent for an
+outside-boundary parent. `AlreadyMaterialized` returns no observer payload.
+Verify BlockProcessor forwards the inserted payload before `PersistedBlock`;
+failed observer delivery invalidates the API image but does not suppress the
+later `PersistedBlock` delivery.
+
 Verify the [atomic VSPC transaction](storage.md#atomic-vspc-transaction--settled)
 for source continuity, every removed and added selected-parent relationship,
 the removed/added pivot, direct-chain materiality, duplicate/intersection
