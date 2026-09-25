@@ -13,6 +13,8 @@ Rust declarations follow the semantic-shape convention in the
 ## Shared value types — settled
 
 ```rust
+type Timestamp = u64;
+
 const MAX_DAA_SCORE: u64 = i64::MAX as u64 - 1;
 const MAX_BLUE_SCORE: u64 = i64::MAX as u64;
 
@@ -50,6 +52,11 @@ struct MaterializedSyncAnchor {
     blue_score: u64,
 }
 ```
+
+`Timestamp` is the rusty-kaspa header timestamp: whole milliseconds since the
+Unix epoch. KGI accepts the complete upstream `u64` domain. It is informational
+block metadata; KGI does not use it for consensus, ordering, recovery, or
+arithmetic.
 
 Every KGI DAA score is in `0..=MAX_DAA_SCORE`, and every KGI blue score is in
 `0..=MAX_BLUE_SCORE`. The fields remain ordinary `u64`; these constants define

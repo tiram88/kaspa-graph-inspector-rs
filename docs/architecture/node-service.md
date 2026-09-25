@@ -368,6 +368,10 @@ calculation, or other processing input. An excessive score returns the typed
 malformed RPC shape and is never remapped to a source-specific malformed-input
 kind.
 
+The normalizer copies the domain-owned informational `Timestamp` unchanged and
+performs no timestamp range validation. Storage owns its lossless `BIGINT`
+encoding.
+
 The operation that obtained a raw block additionally validates its contextual
 expected hash. Source-specific response classification remains outside the
 common normalizer for every other intrinsic failure: GetBlocks, individual

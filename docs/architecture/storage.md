@@ -431,6 +431,14 @@ parents(
 );
 ```
 
+`blocks.timestamp` stores the complete domain-owned `Timestamp` in `BIGINT` by
+preserving its exact 64-bit pattern. Writing reinterprets `u64` as `i64`; reading
+reinterprets the stored `i64` as `u64`. Values through `i64::MAX` therefore
+retain their ordinary positive representation, while larger informational
+values appear negative only inside PostgreSQL and still round-trip exactly.
+Storage never applies signed ordering or arithmetic to this column, and a
+negative stored timestamp is not database inconsistency.
+
 `parents.child_id` and `parents.parent_id` intentionally have no foreign keys.
 The materialization transaction validates their identities and embeds both
 endpoint coordinates. An outside-boundary parent uses the sentinel `(0,0)`.

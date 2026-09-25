@@ -215,7 +215,9 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
     value reports the corresponding `ScoreOutOfRange` fault, returns no
     normalized value, is Fatal without retiring the RPC generation, and does
     not consume the malformed recovery-response budget. Include BlockAdded,
-    GetBlocks, current-pruning-point, and individual GetBlock sources.
+    GetBlocks, current-pruning-point, and individual GetBlock sources. A full
+    block timestamp of `u64::MAX` passes normalization unchanged and produces
+    no timestamp-specific fault.
 
 Use injected clocks and deterministic jitter to verify the independent
 [NodeService](node-service.md#nodeservice--settled) and
@@ -292,7 +294,10 @@ and [rebuild transaction](storage.md#rebuild-transaction--settled) with:
     with a negative score or the DAA sentinel stored as a real block score are
     classified `Inconsistent`, while a defensive out-of-range storage input is
     rejected before mutation with the typed DAA or blue
-    `StorageError::ScoreOutOfRange` reason.
+    `StorageError::ScoreOutOfRange` reason. Round-trip timestamps `0`,
+    `i64::MAX`, `i64::MAX + 1`, and `u64::MAX` through the signed `BIGINT`
+    bit-pattern encoding; upper-half negative storage values are not
+    inconsistent contents.
 
 Verify the [block materialization transaction](storage.md#block-materialization-transaction--settled)
 and [PP seal behavior](block-processing.md#pp-boundary-phase-behavior--settled)
