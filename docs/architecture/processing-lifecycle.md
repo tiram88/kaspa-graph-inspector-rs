@@ -383,6 +383,50 @@ common pump may start.
 Once prepared, both modes use the same block/VSPC synchronization pump. Their
 only material difference is storage policy before PP-boundary sealing.
 
+### Boundary seal threshold construction
+
+ResyncEngine is the sole constructor of the boundary seal threshold for both
+recovery modes:
+
+```rust
+enum BoundarySealThresholdError {
+    Overflow,
+    AboveMaximum,
+}
+
+fn construct_boundary_seal_blue_score(
+    boundary_hash: BlockHash,
+    boundary_blue_score: u64,
+    genesis_hash: BlockHash,
+    anticone_finalization_depth: u64,
+) -> Result<u64, BoundarySealThresholdError>;
+```
+
+Its complete behavior is:
+
+```text
+boundary_hash == genesis_hash:
+    boundary_blue_score
+
+otherwise:
+    checked(boundary_blue_score + anticone_finalization_depth)
+```
+
+The result must be at most the shared `MAX_BLUE_SCORE`. `Overflow` or
+`AboveMaximum` reports `ScoreOutOfRange(BoundarySealThreshold)` with Fatal
+disposition under the fault policy above; never wrap, saturate, or continue
+with an unreachable threshold. The anticone depth comes from the run's exact
+`ValidatedNodeInfo.consensus` and is current-session recovery input, not
+persisted node metadata or a database-compatibility field.
+
+For Resync, invoke the function with the database PP hash and persisted
+`db_pp_blue_score` returned by reconciliation. For Rebuild, invoke it with the
+normalized current node pruning-point hash and blue score before the API Reset
+barrier or any storage replacement. Only a successful result may populate
+`PreparedSync.boundary_seal_blue_score` and the BlockProcessor Begin payload.
+The valid Genesis boundary score is zero under the storage invariants, so its
+threshold is zero and requires no addition.
+
 ### Resync preparation
 
 ResyncEngine first calls
@@ -420,31 +464,14 @@ Resync requirements:
 2. The committed VSPC sink used to construct `MaterializedSyncAnchor` is
    Materialized in the same database snapshot.
 3. The node recognizes that committed sink as a usable `low_hash`.
-4. `sink.blue_score >= db_boundary_seal_blue_score`, where:
+4. `sink.blue_score >= boundary_seal_blue_score` produced by the common
+   construction above.
 
-   ```text
-   db_boundary_seal_blue_score =
-       db_pp_blue_score
-           when db_pp == network Genesis
-
-       db_pp_blue_score + anticone_finalization_depth
-           otherwise
-   ```
-
-For a Genesis PP the effective threshold is therefore zero. A coherent
+For a Genesis PP the common threshold is zero. A coherent
 Genesis-anchored database may use ordinary Resync even while the chain is
 younger than `anticone_finalization_depth`; every other reconciliation check
 above still applies. `Empty` remains distinct because it has no PP or committed
 sink despite also storing `db_pp_blue_score = 0`.
-
-The threshold uses `anticone_finalization_depth` from the run's exact
-`ValidatedNodeInfo.consensus`. It is current-session recovery input, not
-persisted node metadata or a database-compatibility field.
-
-For a non-Genesis PP, construct the threshold with `u64::checked_add` and
-require the result to be at most the shared `MAX_BLUE_SCORE`. Failure reports
-`ScoreOutOfRange(BoundarySealThreshold)` under the fault policy above; never
-wrap, saturate, or continue with an unreachable threshold.
 
 A missing or inconsistent stored sink, a definitive absent response from the
 node, a stored/returned DAA-score mismatch, or another failed reconciliation
@@ -459,9 +486,10 @@ malformed-recovery-input policy above. Rebuild occurs as a separate run.
 
 ResyncEngine obtains the mandatory current pruning-point block once through
 `ValidatedRpcClient::current_pruning_point_block()` on the Rebuild run's exact
-validated RPC generation. After the API Reset barrier it passes that same
-validated `ValidatedNodeBlock` to the only storage API that clears processing
-data:
+validated RPC generation. It constructs the boundary seal threshold from that
+block under the common contract above. Only after successful construction and
+the API Reset barrier does it pass that same validated `ValidatedNodeBlock` to
+the only storage API that clears processing data:
 
 ```rust
 let anchor = db.rebuild_from_pruning_point(pp).await?;
@@ -471,7 +499,9 @@ The pruning point is mandatory. Storage owns the transaction, retained network
 binding, PP-boundary representation, metadata replacement, cache publication,
 and returned anchor, including the pruning point's selected-parent hash; see
 [storage.md](storage.md#rebuild-transaction--settled). ResyncEngine must not
-expose or use a general clear-without-PP primitive.
+expose or use a general clear-without-PP primitive. It combines the returned
+anchor with the already constructed threshold and exact clients to publish
+`PreparedSync`; it does not derive the threshold from the returned sink.
 
 ### API session replacement and publication
 
@@ -500,11 +530,10 @@ For Rebuild, obtain the pruning point, send the database-rebuild Reset, and
 await its acknowledgement before `rebuild_from_pruning_point`. After processor
 Begin, ResyncEngine sends the PostSeal publication trigger only when it
 observes BlockProcessor's definitely committed `PpBoundarySealed` event.
-When that PP is Genesis, the rebuild transaction has already established its
-intrinsically sealed boundary; BlockProcessor begins directly in PostSeal and
-emits the same milestone while handling `BeginRebuild`. ResyncEngine handles it
-through the ordinary path, including the PostSeal publication and Supervisor's
-`Rebuild -> Resync` downgrade.
+For Genesis, BlockProcessor emits that milestone while handling `BeginRebuild`
+under its [PP-boundary contract](block-processing.md#pp-boundary-phase-behavior--settled).
+ResyncEngine handles it through the ordinary path, including the PostSeal
+publication and Supervisor's `Rebuild -> Resync` downgrade.
 
 When the global `EnteredLive` conditions are satisfied, ResyncEngine sends the
 Live publication trigger.

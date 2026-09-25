@@ -12,9 +12,9 @@ owns raw BlockAdded validation and routing.
 ## PP-boundary phase behavior — settled
 
 ResyncEngine supplies `boundary_seal_blue_score` in the Begin payload. Its
-[Resync preparation contract](processing-lifecycle.md#resync-preparation) owns
-the threshold formula, checked construction, and failure disposition;
-BlockProcessor only consumes the supplied value.
+[boundary threshold contract](processing-lifecycle.md#boundary-seal-threshold-construction)
+owns construction and failure disposition; BlockProcessor only consumes the
+supplied value.
 
 Genesis has no discarded DAG past, so a Genesis PP is intrinsically sealed at
 blue score zero. After the atomic Genesis rebuild transaction, `BeginRebuild`

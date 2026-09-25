@@ -355,17 +355,25 @@ exact no-transactions GetBlock header. Cover:
 - transport or session failure without inferring Rebuild; and
 - a response carrying the wrong hash or missing required GhostDAG header data
   as `MalformedGetBlock`, retiring the exact RPC generation without inferring
-  Rebuild; and
-- non-Genesis boundary-threshold construction at `MAX_BLUE_SCORE`, plus
-  checked-add overflow and an otherwise representable sum above that maximum;
-  both failures report `ScoreOutOfRange(BoundarySealThreshold)` without
-  wrapping or saturation.
+  Rebuild.
+
+Verify the common
+[boundary seal threshold construction](processing-lifecycle.md#boundary-seal-threshold-construction)
+through both preparation modes. Cover a zero Genesis threshold, a non-Genesis
+result exactly at `MAX_BLUE_SCORE`, checked-add overflow, and an otherwise
+representable sum above that maximum. Both failures report
+`ScoreOutOfRange(BoundarySealThreshold)` without wrapping or saturation and
+produce no `PreparedSync` or processor Begin. Resync uses the reconciled DB PP
+hash and score. Rebuild uses the normalized node PP hash and score and performs
+this check before API Reset or database replacement.
 
 Verify Rebuild obtains one normalized current pruning-point block, completes
 the API Reset barrier, and passes that same `ValidatedNodeBlock` to
 `rebuild_from_pruning_point` rather than rediscovering it or mixing RPC
-generations. Malformed pruning-point responses use the shared malformed-input
-budget; transport and generation loss retain their session-fault disposition.
+generations. Its successful threshold and returned anchor populate the same
+`PreparedSync` and exact BlockProcessor Begin payload. Malformed pruning-point
+responses use the shared malformed-input budget; transport and generation loss
+retain their session-fault disposition.
 
 Also cover a coherent Genesis-anchored database below anticone finalization
 depth, Empty-versus-Genesis discrimination, exact node/database
