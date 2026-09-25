@@ -204,25 +204,34 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
    `RecoveryInputInvalid(MalformedPruningPointResponse)`, retires the producing
    RPC generation, consumes the shared malformed-input budget, and produces no
    boundary threshold, `PreparedSync`, API Reset, or storage mutation.
-10. Individual full-block GetBlock validates the requested hash and every
+10. Verify the
+    [Catchup sink-sample contract](node-service.md#catchup-sink-sample) with
+    ordinary and exact-Genesis success, ORIGIN, an advertised sink that is
+    definitively not found, missing or malformed header data, wrong computed or
+    reported hashes, and a nonzero Genesis DAA score. Every malformed case
+    returns `MalformedCatchupSinkResponse`, retires the exact RPC generation,
+    and consumes the shared malformed-input budget. Cover an out-of-range DAA
+    score without generation retirement or budget consumption, transport and
+    generation loss as session faults, and a distinct cancellation outcome.
+11. Individual full-block GetBlock validates the requested hash and every
     `ValidatedNodeBlock` invariant. Malformed output retires the exact RPC
     generation; definitive not-found and transport failure retain their
     distinct classifications.
-11. BlockAdded normalization failure disables routing, enqueues no block, and
+12. BlockAdded normalization failure disables routing, enqueues no block, and
     reports `NotificationInputInvalid(MalformedBlockAdded)` without retiring
     the RPC generation.
-12. NotificationRouter applies the VSPC structural checks in their specified
+13. NotificationRouter applies the VSPC structural checks in their specified
     order. Exercise the valid empty no-op and each typed nonempty-removed,
     duplicate-member, and removed/added-intersection result; malformed input
     is not enqueued and disables routing without retiring the RPC generation.
-13. Exercise `MAX_DAA_SCORE` and `MAX_BLUE_SCORE` successfully, then exceed
+14. Exercise `MAX_DAA_SCORE` and `MAX_BLUE_SCORE` successfully, then exceed
     each by one in full-block and header-only responses. Every excessive node
     value reports the corresponding `ScoreOutOfRange` fault, returns no
     normalized value, is Fatal without retiring the RPC generation, and does
     not consume the malformed recovery-response budget. Include BlockAdded,
-    GetBlocks, current-pruning-point, and individual GetBlock sources. A full
-    block timestamp of `u64::MAX` passes normalization unchanged and produces
-    no timestamp-specific fault.
+    GetBlocks, current-pruning-point, Catchup sink-sample, and individual
+    GetBlock sources. A full block timestamp of `u64::MAX` passes normalization
+    unchanged and produces no timestamp-specific fault.
 
 Use injected clocks and deterministic jitter to verify the independent
 [NodeService](node-service.md#nodeservice--settled) and
@@ -411,18 +420,24 @@ Rebuild.
 
 Verify the [Catchup trigger](processing-lifecycle.md#catchup-trigger) with:
 
-1. Rolling marker replacement, replacement already present in the held page,
+1. Initial `catchup_sink_sample()` before the GetBlocks scan and refresh only
+   after holding a complete page containing the eligible marker. A failed
+   initial sample starts no scan; a failed refresh leaves the held page
+   undispatched, enters no Catchup, and does not replace the marker. Cover the
+   malformed-sample, score-range, transport, generation-loss, and cancellation
+   dispositions through their NodeService-owned typed outcomes.
+2. Rolling marker replacement, replacement already present in the held page,
    cursor equality, and `Unknown -> Present -> Removed` tracking.
-2. Checked and decreasing DAA-score cases and the page-aware threshold for the
+3. Checked and decreasing DAA-score cases and the page-aware threshold for the
    standard 1 and 10 BPS profiles and a 50 BPS override with
    `mergeset_size_limit = 512`, using the prevalidated
    `catchup_max_daa_gap`. Catchup must precede dispatch of the complete held
    page only when its VSPC-established marker satisfies the contract.
-3. Independent fixtures for the global-maximum-position fallback, normalized
+4. Independent fixtures for the global-maximum-position fallback, normalized
    GetBlocks length below three, and empty VSPC V2 page.
-4. A material pre-Catchup omission using the existing strict-processing
+5. A material pre-Catchup omission using the existing strict-processing
    `Require(Resync)` path.
-5. The upward seal milestone path from BlockProcessor through ResyncEngine to
+6. The upward seal milestone path from BlockProcessor through ResyncEngine to
    Supervisor. It never returns to BlockProcessor as a command, and no Catchup
    path is admitted before ResyncEngine observes it; global Live still requires
    PostSeal.

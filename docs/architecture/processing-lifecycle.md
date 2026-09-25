@@ -128,6 +128,7 @@ enum MalformedVspcResponseReason {
 }
 enum RecoveryInputKind {
     MalformedPruningPointResponse,
+    MalformedCatchupSinkResponse,
     MalformedGetBlock,
     MalformedGetBlocks,
     MalformedVspcResponse(MalformedVspcResponseReason),
@@ -262,9 +263,12 @@ loop without adding this delay. `Require(Resync)` and `Require(Rebuild)` do not
 consume or wait on the Retry sequence. All waits are lifecycle-cancellable.
 
 Malformed recovery RPC responses use a separate shared budget across
-`MalformedPruningPointResponse`, `MalformedGetBlock`, `MalformedGetBlocks`, and
-every `MalformedVspcResponse` reason. Every occurrence first retires the exact
-`ValidatedRpcClient` generation that produced it. A violation observable in
+`MalformedPruningPointResponse`, `MalformedCatchupSinkResponse`,
+`MalformedGetBlock`, `MalformedGetBlocks`, and every `MalformedVspcResponse`
+reason. NodeService's
+[runtime protocol contract](node-service.md#runtime-protocol-violation-and-generation-retirement)
+retires the exact `ValidatedRpcClient` generation that produced each such
+occurrence before this lifecycle policy counts it. A violation observable in
 the raw response discards that response without advancing a cursor or sending
 processor input. `SelectedParentPathDiscontinuity` enters this policy only
 after VspcProcessor's attribution probe proves that the synthetic candidate
@@ -645,9 +649,10 @@ satisfied.
 
 ### Catchup trigger
 
-Capture `catchup_sink = GetSink()` and the DAA score of that exact block at
-the start of the GetBlocks scan. Track that rolling marker through the
-ordered synthetic VSPC pump:
+Call the run's exact validated RPC generation's
+`catchup_sink_sample()` before starting the GetBlocks scan. Use its returned
+hash and DAA score as the initial `catchup_sink` marker and track that marker
+through the ordered synthetic VSPC pump:
 
 ```text
 Unknown -- marker equals the synthetic cursor or occurs in added --> Present
@@ -662,9 +667,9 @@ VSPC RPC's removed suffix is complete even when its added path is batch
 limited.
 
 Hold a normalized GetBlocks page containing the marker before dispatch and
-refresh `GetSink()`. Fetch the returned block's immutable header and use
-checked DAA-score subtraction. Use `catchup_max_daa_gap` from the run's exact
-validated `KgiConsensusParams`; the
+call `catchup_sink_sample()` again for the refresh. Use checked DAA-score
+subtraction between the returned sample and the marker. Use
+`catchup_max_daa_gap` from the run's exact validated `KgiConsensusParams`; the
 [NodeService parameter contract](node-service.md#consensus-parameter-resolution)
 owns its checked construction and admissibility.
 
@@ -677,6 +682,14 @@ the held page. Otherwise continue scanning. Remember a marker already seen by
 GetBlocks when its VSPC state has not caught up, and reconsider eligibility at
 a later complete page boundary. A removed marker or decreasing score is
 replaced and cannot authorize Catchup.
+
+Failure of either sink-sample call applies its typed lifecycle disposition to
+the complete recovery attempt. In particular, a failed refresh does not
+dispatch the held GetBlocks page, enter Catchup, or replace the marker.
+Malformed samples follow the shared malformed recovery-input policy; transport
+or validated-generation loss retries the whole attempt while retaining the
+current recovery obligation, and expected teardown cancellation is not a
+fault.
 
 The rolling marker is the primary path. If it has not authorized Catchup,
 retain three independent fallbacks:

@@ -381,8 +381,8 @@ encoding.
 The operation that obtained a raw block additionally validates its contextual
 expected hash. Source-specific response classification remains outside the
 common normalizer for every other intrinsic failure: GetBlocks, individual
-GetBlock, current-pruning-point, and BlockAdded inputs retain their distinct
-fault classifications and lifecycle dispositions. The
+GetBlock, current-pruning-point, Catchup sink-sample, and BlockAdded inputs
+retain their distinct fault classifications and lifecycle dispositions. The
 [processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
 owns range-fault and malformed-input dispositions.
 
@@ -415,6 +415,43 @@ common full-block normalization for a reason other than score range is
 generation is retired and the shared malformed recovery-input policy applies.
 A transport failure, cancellation, or generation loss remains a session fault
 and does not establish a reconciliation mismatch.
+
+#### Catchup sink sample
+
+Catchup obtains its rolling sink marker through one normalized composite
+operation on the run's exact validated generation:
+
+```rust
+struct CatchupSinkSample {
+    hash: BlockHash,
+    daa_score: u64,
+}
+
+impl ValidatedRpcClient {
+    async fn catchup_sink_sample(
+        &self,
+    ) -> Result<CatchupSinkSample, NodeError>;
+}
+```
+
+The operation calls `GetSink()`, rejects ORIGIN, then calls
+`GetBlock(sink_hash, include_transactions = false)` on the same generation.
+The immutable header must be present, its computed hash and every separately
+reported block hash must equal `sink_hash`, and its DAA score must be in the
+domain-owned representable range. The exact validated Genesis hash is a valid
+sink and must have DAA score zero.
+
+ORIGIN, definitive not-found for the just-advertised sink, missing or malformed
+header data, a hash mismatch, or nonzero Genesis DAA score is
+`RecoveryInputInvalid(MalformedCatchupSinkResponse)`. The exact validated RPC
+generation is retired and the shared malformed recovery-input policy applies.
+A score outside the representable range retains the shared
+`ScoreOutOfRange(DaaScore)` classification and does not retire the generation.
+Transport failure, generation loss, and cancellation retain their distinct
+session-level outcomes and are not malformed-response evidence.
+
+The [Catchup lifecycle](processing-lifecycle.md#catchup-trigger) owns initial
+and refresh call ordering, marker replacement, and recovery reaction.
 
 #### GetBlocks and VSPC recovery responses
 
