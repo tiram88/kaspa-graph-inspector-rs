@@ -324,15 +324,15 @@ generation. It then passes that block's hash to
 `ValidatedDbClient::reconciliation_snapshot(current_node_pp)`. The
 [storage contract](storage.md#reconciliation-snapshot--settled) solely owns the
 returned state and snapshot shapes, database reads, committed-sink derivation,
-and `BoundaryMaterialized` proof. ResyncEngine owns the call ordering, result
-dispositions, and node-side validation below; it does not reconstruct the
-storage proof.
+and `BoundaryMaterialized` proofs for the current node PP and committed sink.
+ResyncEngine owns the call ordering, result dispositions, and node-side
+validation below; it does not reconstruct either storage proof.
 
 An Empty state is genuinely fully empty and requests a distinct Rebuild run
 because PP, score, and sink are absent. A
-`NodePpNotBoundaryMaterialized` result also requests Rebuild. A valid schema
-with inconsistent processing contents likewise requests Rebuild but is not
-treated as Empty.
+`NodePpNotBoundaryMaterialized` or `SinkNotBoundaryMaterialized` result also
+requests Rebuild. A valid schema with inconsistent processing contents
+likewise requests Rebuild but is not treated as Empty.
 
 ResyncEngine uses the run's exact `Arc<ValidatedRpcClient>` and the normalized
 [individual recovery GetBlock](node-service.md#individual-recovery-getblock)
@@ -350,8 +350,10 @@ Resync requirements:
 
 1. The current node PP returned by the run's exact validated RPC generation is
    `BoundaryMaterialized` in the database snapshot.
-2. The node recognizes the committed materialized VSPC sink used as `low_hash`.
-3. `sink.blue_score >= db_boundary_seal_blue_score`, where:
+2. The committed VSPC sink used to construct `MaterializedSyncAnchor` is
+   `BoundaryMaterialized` in the same database snapshot.
+3. The node recognizes that committed sink as a usable `low_hash`.
+4. `sink.blue_score >= db_boundary_seal_blue_score`, where:
 
    ```text
    db_boundary_seal_blue_score =

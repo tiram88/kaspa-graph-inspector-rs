@@ -259,9 +259,11 @@ and [rebuild transaction](storage.md#rebuild-transaction--settled) with:
     enforced in the insertion transaction.
 12. Verify the
     [reconciliation snapshot](storage.md#reconciliation-snapshot--settled) with
-    `Existing` including its proven `node_pp`, each documented
-    `NodePpNotBoundaryMaterialized` case, coherent Empty, inconsistent contents,
-    and operational storage failure as distinct outcomes.
+    `Existing` including its proven `node_pp` and certified committed sink,
+    each documented `NodePpNotBoundaryMaterialized` and
+    `SinkNotBoundaryMaterialized` case, coherent Empty, inconsistent contents,
+    and operational storage failure as distinct outcomes. A retained-past
+    incomplete committed sink must not produce `MaterializedSyncAnchor`.
 
 Verify the [block materialization transaction](storage.md#block-materialization-transaction--settled)
 and [PP seal behavior](block-processing.md#pp-boundary-phase-behavior--settled)
@@ -273,6 +275,11 @@ milestone follows Begin without ordinary Genesis materialization. Inject crash
 and ambiguous-commit outcomes around both paths; an unproven non-Genesis seal
 emits no milestone, while restart after a committed Genesis rebuild derives
 PostSeal from storage and proceeds through ordinary Resync.
+
+Verify BlockProcessor emits `PersistedBlock` only for a point certified
+`BoundaryMaterialized` after definite insert or validated dedup. An ordinary
+materialized-ID lookup, including one for a retained-past-incomplete block,
+must not independently produce that certification.
 
 Verify the [atomic VSPC transaction](storage.md#atomic-vspc-transaction--settled)
 for source continuity, every removed and added selected-parent relationship,
@@ -297,13 +304,15 @@ and an exact no-transactions GetBlock header. Cover:
 
 - exact current-node-PP discovery and successful boundary-materiality proof;
 - successful `MaterializedSyncAnchor` construction, including a header-only
-  node block;
+  node block and a committed sink whose retained-past proof succeeded;
 - exact propagation into both processor Begin payloads, including
   VspcProcessor initialization of its committed sink and history seed;
 - a definitively absent sink, incoherent stored sink, and a DAA mismatch
   requiring Rebuild;
 - an absent, identity-only, or retained-past-incomplete current node PP
   requiring Rebuild without retiring the valid RPC generation;
+- a retained-past-incomplete committed sink requiring Rebuild without
+  constructing an anchor or retiring the valid RPC generation;
 - transport or session failure without inferring Rebuild; and
 - a response carrying the wrong hash or missing required GhostDAG header data
   as `MalformedGetBlock`, retiring the exact RPC generation without inferring

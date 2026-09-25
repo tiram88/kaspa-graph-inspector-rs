@@ -838,6 +838,9 @@ enum ReconciliationState {
     NodePpNotBoundaryMaterialized {
         hash: BlockHash,
     },
+    SinkNotBoundaryMaterialized {
+        hash: BlockHash,
+    },
     Existing(ReconciliationSnapshot),
 }
 
@@ -873,22 +876,25 @@ impl ValidatedDbClient {
 database PP exclusively at `(level=1, slot=0)`, read
 `NodeMetadata.db_pp_blue_score`, derive the committed sink as the maximum-ID
 materialized VSPC block, resolve its selected-parent hash, and verify that
-the PP and sink are materialized and mutually coherent. For an initialized
-database it also resolves the supplied current node PP and proves
-`BoundaryMaterialized(current_node_pp)` in that same snapshot: the block must
-be materialized and its retained parent and merge-set references must close
-through materialized blocks up to the valid PP boundary, where permanent
-`BoundaryIdentity` references are permitted.
+the PP and sink are mutually coherent. For an initialized database it also
+resolves the supplied current node PP and proves both
+`BoundaryMaterialized(current_node_pp)` and
+`BoundaryMaterialized(committed_vspc_sink)` in that same snapshot. Each block
+must be materialized and its retained parent and merge-set references must
+close through materialized blocks up to the valid PP boundary, where
+permanent `BoundaryIdentity` references are permitted.
 
 Return `Empty` only for the coherent network-bound Empty state. Inconsistent
 combinations return a typed `StorageError` rather than an incomplete snapshot.
 Return `NodePpNotBoundaryMaterialized` when the supplied hash
 is absent, identity-only, or fails the retained-past proof; this is
-reconciliation evidence rather than an operational storage failure. `Existing`
-includes the proven materialized node PP as `node_pp`. The result contains no
-node-derived blue work or blue score. ResyncEngine uses the run's exact
-validated RPC generation to enrich and validate the stored sink before
-constructing `MaterializedSyncAnchor`.
+reconciliation evidence rather than an operational storage failure. Return
+`SinkNotBoundaryMaterialized` when the derived committed sink fails the same
+proof. `Existing` includes the proven materialized node PP as `node_pp` and a
+committed sink certified for construction of `MaterializedSyncAnchor`. The
+result contains no node-derived blue work or blue score. ResyncEngine uses the
+run's exact validated RPC generation to enrich and validate the stored sink
+before constructing the anchor.
 
 ## Historical read contracts — settled
 
