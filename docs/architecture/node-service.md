@@ -306,9 +306,7 @@ The operation calls `GetBlockDagInfo`, requires the response network to equal
 `ValidatedNodeInfo.network_id`, reads a non-ORIGIN `pruning_point_hash`, and
 then calls `GetBlock(pruning_point_hash, include_transactions = false)` on the
 same generation. The returned block hash must equal `pruning_point_hash`, and
-the result must pass common full-block normalization. This includes the exact
-validated-Genesis ORIGIN exception and the ordinary non-Genesis parent
-relationship.
+the result must pass common full-block normalization.
 
 The [processing lifecycle](processing-lifecycle.md) owns when Resync and Rebuild
 invoke this operation and how they consume its normalized result.
