@@ -143,6 +143,10 @@ enum ScoreRangeFault {
     BlueScore,
     BoundarySealThreshold,
 }
+enum BoundedProcessingState {
+    Orphans,
+    VspcPending,
+}
 enum FaultKind {
     ServiceGenerationLost(ServiceKind),
     NotificationContinuityLost(NotificationStream),
@@ -151,6 +155,7 @@ enum FaultKind {
     ReconciliationFailed,
     MaterialityViolation,
     DependencyUnavailable,
+    BoundedStateExhausted(BoundedProcessingState),
     ScoreOutOfRange(ScoreRangeFault),
     Persistence(PersistenceFault),
     Ownership,
@@ -221,6 +226,12 @@ do.
   notification routing, and requires Resync under the same
   notification-source policy. It neither retires the validated RPC generation
   nor consumes the malformed recovery-response budget.
+- `BoundedStateExhausted(Orphans)` and
+  `BoundedStateExhausted(VspcPending)` each require Resync. ResyncEngine closes
+  both routed notification streams and begins ordinary complete session
+  teardown. Neither fault retires an RPC generation or consumes the malformed
+  recovery-response budget, and a retained Rebuild obligation is never
+  weakened to Resync.
 - A `VspcSourceDiscontinuity` reported for a synthetic candidate is
   `RecoveryInputInvalid(MalformedVspcResponse(ResolvedSourceDiscontinuity))`.
   The notification form is

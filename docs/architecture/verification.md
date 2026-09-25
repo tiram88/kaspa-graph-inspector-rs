@@ -489,8 +489,8 @@ with injected clocks and deterministic jitter:
 - the general Retry backoff resets on Live, a new resource generation, and a
   stronger obligation;
 - recovery requirements do not consume Retry backoff;
-- one shared counter across malformed pruning-point, GetBlock, GetBlocks, and
-  VSPC response kinds and all VSPC reasons, including
+- one shared counter across malformed pruning-point, Catchup sink-sample,
+  GetBlock, GetBlocks, and VSPC response kinds and all VSPC reasons, including
   `RemovedChainWithoutAddedPath`, `LowHashPathMismatch`,
   `ResolvedSourceDiscontinuity`, and the later attributed
   `SelectedParentPathDiscontinuity`: each malformed synthetic
@@ -510,6 +510,10 @@ with injected clocks and deterministic jitter:
   retirement or malformed-budget consumption;
 - malformed, definitively absent, transport-failed, cancelled, and
   generation-lost attribution probes retain their distinct dispositions; and
+- both `BoundedStateExhausted` variants atomically reject the triggering input,
+  disable both notification streams, require Resync without weakening Rebuild,
+  retire no RPC generation, consume no malformed-input budget, and proceed
+  through complete session teardown; and
 - typed fault kinds, never diagnostics, drive policy and counters.
 
 Verify [teardown](processing-lifecycle.md#teardown-and-delivery-semantics--settled)
@@ -544,6 +548,15 @@ Verify [block admission](block-processing.md#admission-and-materialization),
    `ReconciliationFailed` and `Require(Resync)`. During Catchup and Live, the
    complete missing set enters ordinary orphan/dependency resolution without a
    partial database write.
+9. A second BlockAdded for a hash whose notification source bit is already set
+   is discarded before materialization and orphan admission without changing
+   overlap or requesting recovery. A synthetic copy followed by the first
+   notification still establishes ordinary overlap.
+10. Fill orphan storage with distinct hashes, then verify that another distinct
+    orphan reports `BoundedStateExhausted(Orphans)` without partial topology,
+    reverse-index, or pending-resolution mutation and accepts only lifecycle
+    commands until Deactivate. Re-admitting an existing orphan at capacity
+    consumes no new slot and does not report exhaustion.
 
 ## VSPC processing
 
@@ -562,6 +575,11 @@ with:
   Catchup;
 - bounded pending order where one unready candidate does not block a later
   actionable candidate;
+- pending-destination collision checks precede capacity admission; at capacity,
+  an existing collision keeps its notification fault, while a distinct
+  synthetic or notification candidate reports
+  `BoundedStateExhausted(VspcPending)` without partial index mutation, eviction,
+  or coalescing and accepts only lifecycle commands until Deactivate;
 - repeated `PersistedBlock` delivery for one hash reuses the first history
   record without content comparison and leaves both history indexes unchanged;
   a new hash updates both indexes in one local transition;

@@ -123,6 +123,16 @@ readiness and ordered candidate selection.
 The exact pending capacity remains deferred in the
 [decision register](../decisions/deferred.md).
 
+Capacity counts distinct pending candidates. The notification collision checks
+below precede capacity admission because an existing-destination collision does
+not consume a new slot. If a distinct synthetic or notification candidate
+would exceed capacity, reject it before changing any pending index and do not
+evict or coalesce existing state. VspcProcessor reports
+`BoundedStateExhausted(VspcPending)`, then admits only lifecycle commands until
+Deactivate clears the retained run-local state. The
+[processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
+owns routing shutdown and recovery disposition.
+
 Resolve both source and destination before a notification becomes actionable.
 An unresolved older notification must not head-block a later actionable one or
 earn overlap merely because its raw destination hash is known.
@@ -178,8 +188,7 @@ and overlap rules.
 
 In Live, a rare network-delayed notification that cannot resolve after history
 pruning may remain non-actionable in the bounded pending structure. It must not
-block a later actionable crossing transition. Pending-capacity exhaustion
-requires Resync.
+block a later actionable crossing transition.
 
 ## Readiness and materiality — settled
 

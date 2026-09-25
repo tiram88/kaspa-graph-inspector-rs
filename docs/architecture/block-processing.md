@@ -166,11 +166,13 @@ AtomicBool block_overlap
 ```
 
 A hash admitted from both sources proves block overlap and sets the flag.
-A second BlockAdded for the same hash within one subscription is an invariant
-fault. GetBlocks hashes may repeat across responses, so ResyncEngine filters
-synthetic repeats before dispatch; a filtered repeat earns no overlap credit.
-Complete-page observation and synthetic repeat-filtering rules belong to the
-[processing lifecycle](processing-lifecycle.md).
+When the notification bit is already present for a hash, silently discard the
+second BlockAdded before materialization or orphan admission. It changes no
+source bit, earns no overlap credit, and requests no recovery. Implementations
+may count it diagnostically. GetBlocks hashes may repeat across responses, so
+ResyncEngine filters synthetic repeats before dispatch; a filtered repeat earns
+no overlap credit. Complete-page observation and synthetic repeat-filtering
+rules belong to the [processing lifecycle](processing-lifecycle.md).
 
 ### Committed block delivery
 
@@ -241,6 +243,16 @@ from one quarter through one third of capacity, request frontier hashes to
 maximize release. Exact processor-channel and orphan capacities, resolver
 concurrency, and the orphan threshold remain deferred in the
 [decision register](../decisions/deferred.md).
+
+Orphan capacity counts distinct stored block hashes. An orphan hash already in
+the topology consumes no additional slot. If admitting a new orphan would
+exceed capacity, reject that block before changing orphan storage, reverse
+indexes, topology, or `resolution_pending`; do not evict an existing orphan.
+OrphanManager reports `BoundedStateExhausted(Orphans)` through BlockProcessor,
+then both admit only lifecycle commands until Deactivate clears their retained
+run-local state and descendants. The
+[processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
+owns routing shutdown and recovery disposition.
 
 An isolated orphan below the threshold is acceptable. Connection loss or a
 full notification channel requests recovery. Callbacks intentionally dropped
