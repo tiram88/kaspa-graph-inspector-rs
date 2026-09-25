@@ -120,6 +120,28 @@ Genesis-hash API endpoint is required.
 
 ## Snapshot, revision, delta, SSE, and ETags — settled
 
+```rust
+struct HeadGraphCoverage {
+    retain_from_level: u64,
+    head_level: u64,
+}
+```
+
+`HeadGraphCoverage` describes the complete HGC range at one published
+revision. Every HGC-backed snapshot and every delta carries the coverage of
+its target revision. `Delta(a,b)` therefore carries revision `b`'s coverage.
+The invariant `retain_from_level <= head_level` holds, and every materialized
+block in that inclusive range is present in HGC. This coverage is the complete
+HGC range, independently of the narrower effective range selected for a
+particular graph response.
+
+External parent endpoints below `retain_from_level` remain reference-only graph
+metadata needed by crossing edges; they do not extend HGC coverage. A delta
+whose target boundary advances may omit block and level contents that have
+left HGC, but it retains the endpoint metadata required by every crossing edge
+in the target image. Within one GraphEpoch, `retain_from_level` never
+decreases and `head_level` never decreases.
+
 ApiService begins buffering graph updates **before** a consistent DB snapshot
 read. The snapshot includes complete retained levels/blocks, external edge
 endpoint coordinates and level sizes, current colors/VSPC membership,
@@ -163,11 +185,12 @@ A lifecycle-only revision carries the publication-state update even when graph
 data is unchanged.
 
 Absolute set/upsert patches are preferable to fragile relative instructions.
-Each delta response uses its own response-local hash dictionary. Retention is
-bounded. Epoch mismatch, unavailable revision, stale API, or too-old cursor
-requires a fresh snapshot, never a partial delta. Whether adjacent revisions
-are encoded as individual records or a coalesced patch is implementation
-choice as long as the composability contract holds.
+Each delta response uses its own response-local hash dictionary and carries its
+target `HeadGraphCoverage`. Retention is bounded. Epoch mismatch, unavailable
+revision, stale API, or too-old cursor requires a fresh snapshot, never a
+partial delta. Whether adjacent revisions are encoded as individual records or
+a coalesced patch is implementation choice as long as the composability
+contract holds.
 
 SSE is only an ordered **cursor wakeup** `(epoch, revision)`, not the graph
 data channel. A browser `EventSource` can receive a sequence on one

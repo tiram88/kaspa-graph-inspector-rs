@@ -625,6 +625,17 @@ composition and expiry, response-local hash dictionaries,
 clients, fixed-view freeze, DAA focus, and Live arriving during PostSeal load.
 The latter must publish the completed image directly as Live.
 
+Coverage cases require snapshots and deltas to carry their target revision's
+complete HGC boundary independently of the response's effective window. Verify
+the inclusive coverage invariant and monotonicity of both bounds within an
+epoch; that a head view evicts block and level contents below an advancing
+boundary while retaining required crossing-edge endpoint metadata; that a
+partially covered fixed view preserves its frozen prefix while applying patches
+affecting its live suffix and advancing its cursor; and that a fixed view stops
+catch-up only after its visible end falls below the boundary. An off-window
+parent endpoint below the boundary must not extend the fixed block window or
+prevent that transition.
+
 Verify [Reset and recovery-time availability](api.md#reset-and-recovery-time-availability--settled)
 with ordinary Resync and Rebuild integration scenarios. Resync preserves
 historical reads and orders Reset before PostSeal and processor Begin. Rebuild
