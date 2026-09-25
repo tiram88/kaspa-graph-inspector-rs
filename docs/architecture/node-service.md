@@ -439,10 +439,10 @@ The operation calls `GetSink()`, rejects ORIGIN, then calls
 The immutable header must be present, its computed hash and every separately
 reported block hash must equal `sink_hash`, and its DAA score must be in the
 domain-owned representable range. The exact validated Genesis hash is a valid
-sink and must have DAA score zero.
+sink under the domain-owned Genesis rules.
 
 ORIGIN, definitive not-found for the just-advertised sink, missing or malformed
-header data, a hash mismatch, or nonzero Genesis DAA score is
+header data, or a hash mismatch is
 `RecoveryInputInvalid(MalformedCatchupSinkResponse)`. The exact validated RPC
 generation is retired and the shared malformed recovery-input policy applies.
 A score outside the representable range retains the shared

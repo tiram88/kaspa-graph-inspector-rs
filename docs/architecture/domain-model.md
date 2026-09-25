@@ -77,10 +77,11 @@ parents become `direct_parents`.
 For an ordinary non-Genesis block, `selected_parent` must occur in
 `direct_parents`. The sole exception is the exact Genesis hash discovered for
 the validated RPC generation: Genesis has synthetic ORIGIN as selected parent
-and no actual direct parents, and its blue score is zero. Ordered merge-set
-vectors preserve node order. The type proves intrinsic node-block validity
-only; it makes no claim that any referenced hash is materialized in the current
-database.
+and no actual direct parents, and its blue score is zero. Genesis has no
+special DAA-score constraint beyond the common representable range; a
+configured Genesis DAA score may be nonzero. Ordered merge-set vectors preserve
+node order. The type proves intrinsic node-block validity only; it makes no
+claim that any referenced hash is materialized in the current database.
 
 `BlockHash` is the immutable block identity. Every accepted representation of
 one hash denotes the same block and the same deterministic consensus metadata,

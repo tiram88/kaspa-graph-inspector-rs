@@ -208,11 +208,12 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
     [Catchup sink-sample contract](node-service.md#catchup-sink-sample) with
     ordinary and exact-Genesis success, ORIGIN, an advertised sink that is
     definitively not found, missing or malformed header data, wrong computed or
-    reported hashes, and a nonzero Genesis DAA score. Every malformed case
-    returns `MalformedCatchupSinkResponse`, retires the exact RPC generation,
-    and consumes the shared malformed-input budget. Cover an out-of-range DAA
-    score without generation retirement or budget consumption, transport and
-    generation loss as session faults, and a distinct cancellation outcome.
+    reported hashes. Exact-Genesis success includes a representable nonzero DAA
+    score. Every malformed case returns `MalformedCatchupSinkResponse`, retires
+    the exact RPC generation, and consumes the shared malformed-input budget.
+    Cover an out-of-range DAA score without generation retirement or budget
+    consumption, transport and generation loss as session faults, and a
+    distinct cancellation outcome.
 11. Individual full-block GetBlock validates the requested hash and every
     `ValidatedNodeBlock` invariant. Malformed output retires the exact RPC
     generation; definitive not-found and transport failure retain their
