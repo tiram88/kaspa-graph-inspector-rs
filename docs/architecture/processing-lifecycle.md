@@ -110,6 +110,7 @@ enum MalformedVspcResponseReason {
     DuplicateChainMember,
     RemovedAddedIntersection,
     LowHashPathMismatch,
+    ResolvedSourceDiscontinuity,
     SelectedParentPathDiscontinuity,
 }
 enum RecoveryInputKind {
@@ -180,6 +181,29 @@ do.
 - A malformed VSPC notification reports
   `NotificationInputInvalid(MalformedVspcChange)` and requires Resync under the
   same notification-source policy.
+- A `VspcSourceDiscontinuity` reported for a synthetic candidate is
+  `RecoveryInputInvalid(MalformedVspcResponse(ResolvedSourceDiscontinuity))`.
+  The notification form is `NotificationInputInvalid(MalformedVspcChange)`.
+
+VspcProcessor's typed
+[`VspcPathAttribution`](vspc-processing.md#readiness-and-materiality--settled)
+result maps to lifecycle policy as follows:
+
+| Attribution | Synthetic candidate | Notification candidate |
+|---|---|---|
+| `StoredParentConflict` | `ReconciliationFailed`, `Require(Rebuild)`, and keep the RPC generation | `ReconciliationFailed`, `Require(Rebuild)`, and keep the RPC generation |
+| `CandidatePathConflict` | `RecoveryInputInvalid(MalformedVspcResponse(SelectedParentPathDiscontinuity))`; retire and count the RPC generation | `NotificationInputInvalid(MalformedVspcChange)`; disable routing and `Require(Resync)` |
+| `StoredAndCandidateConflict` | The same recovery-input fault with a Rebuild obligation; retire and count the RPC generation | The same notification-input fault strengthened to Rebuild; disable routing |
+| `AttributionBlockUnavailable` | Treat the synthetic current generation as malformed `SelectedParentPathDiscontinuity`; retire and count it | Treat the notification as malformed; disable routing and `Require(Resync)` |
+
+Only the two stored-state outcomes establish Rebuild. Notification outcomes
+never retire the validated RPC generation or consume the malformed
+recovery-response budget. A malformed individual full-block GetBlock, whether
+issued by DependencyResolver or VspcProcessor attribution, retires the exact
+RPC generation: during active recovery it consumes the shared malformed-input
+budget, while in Live it requires Resync without consuming that recovery-only
+budget. Attribution transport, cancellation, or generation loss is a session
+fault and establishes neither candidate nor database blame.
 
 When the same validated RPC and DB generations remain Ready, whole-attempt
 recovery retries use nominal delays `1s, 2s, 4s, 8s, 16s, 30s`, capped at
@@ -194,15 +218,18 @@ Malformed recovery RPC responses use a separate shared budget across
 every `MalformedVspcResponse` reason. Every occurrence first retires the exact
 `ValidatedRpcClient` generation that produced it. A violation observable in
 the raw response discards that response without advancing a cursor or sending
-processor input. `SelectedParentPathDiscontinuity` can be detected only after
-dispatch; it prevents the atomic VSPC mutation, aborts the complete attempt,
-and discards its provisional cursor and queued synthetic suffix. The first three
-occurrences before `EnteredLive` each abort the complete attempt with `Retry`;
-the fourth is `Fatal`. The counter is shared across all recovery-input kinds
-and VSPC reasons and survives replacement RPC generations, so reconnecting
-repeatedly to the same incompatible node cannot loop forever. Only
-`EnteredLive` resets it; a new RPC generation or stronger recovery mode does
-not.
+processor input. `SelectedParentPathDiscontinuity` enters this policy only
+after VspcProcessor's attribution probe proves that the synthetic candidate
+disagrees with the current GetBlock selected parent. It prevents the atomic
+VSPC mutation, aborts the complete attempt, and discards its provisional cursor
+and queued synthetic suffix. The attribution table above owns any simultaneous
+Rebuild obligation. The first three occurrences before `EnteredLive` each
+permit another attempt after replacement; the fourth is `Fatal`. An accumulated
+Rebuild obligation makes that next attempt Rebuild rather than Resync. The
+counter is shared across all recovery-input kinds and VSPC reasons and survives
+replacement RPC generations, so reconnecting repeatedly to the same
+incompatible node cannot loop forever. Only `EnteredLive` resets it; a new RPC
+generation or stronger recovery mode does not.
 
 Each permitted malformed-input Retry waits for NodeService to publish a new
 validated RPC generation and never reuses or reissues the operation on the
@@ -211,11 +238,7 @@ general recovery Retry delay is not added. A malformed VSPC notification
 is a notification-input fault and therefore does not consume the malformed
 recovery-response budget.
 
-A malformed DependencyResolver full-block response during Catchup is
-`MalformedGetBlock` under that shared recovery budget. The same response in
-Live retires the exact RPC generation and requires Resync; because no recovery
-attempt was active, it does not consume the recovery-response budget. A
-definitive not-found dependency remains `DependencyUnavailable` and requires
+A definitive not-found dependency remains `DependencyUnavailable` and requires
 Rebuild instead of being classified as malformed.
 
 Storage owns local transaction retries and ambiguous-outcome handling; see
@@ -300,6 +323,7 @@ struct BlockProcessorBegin {
 }
 
 struct VspcProcessorBegin {
+    rpc: Arc<ValidatedRpcClient>,
     db: Arc<ValidatedDbClient>,
     anchor: MaterializedSyncAnchor,
 }
@@ -309,9 +333,11 @@ After preparation and the applicable API Reset/publication ordering below,
 ResyncEngine constructs both Begin payloads from the same `PreparedSync` and
 sends the mode-specific `BeginResync` or `BeginRebuild` command to each
 processor. BlockProcessor receives the exact RPC and DB generations, the
-committed anchor, and the seal threshold. VspcProcessor receives the same DB
-generation and anchor but no RPC client. Both commands are exact-once and have
-no acknowledgement. Once both have been enqueued, the common pump may start.
+committed anchor, and the seal threshold. VspcProcessor receives the same RPC
+and DB generations and anchor; it uses the RPC client only for the
+selected-parent attribution contract owned by VspcProcessor. Both commands are
+exact-once and have no acknowledgement. Once both have been enqueued, the
+common pump may start.
 
 Once prepared, both modes use the same block/VSPC synchronization pump. Their
 only material difference is storage policy before PP-boundary sealing.

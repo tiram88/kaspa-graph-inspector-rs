@@ -54,17 +54,18 @@ The Begin variants use the
 payload owned by the processing lifecycle. Conceptual commands are
 `BeginRebuild(VspcProcessorBegin)`, `BeginResync(VspcProcessorBegin)`,
 `Catchup`, `Live`, `Deactivate`, and `Shutdown`. Commands have priority over
-data inputs. VspcProcessor receives no RPC client.
+data inputs. VspcProcessor receives the processing session's exact validated
+RPC and DB generations.
 
 A Begin command resets all run-local pending state, history, overlap, and
-phase state, installs the supplied DB generation, and closes the local
+phase state, installs the supplied RPC and DB generations, and closes the local
 notification gate. It sets `committed_vspc_sink = anchor.point` and seeds the
 new history from the same anchor as defined below, then enters the pre-Catchup
 synthetic-priority phase. Continue polling the
 notification receiver while the gate is closed and discard notifications
 immediately rather than accumulating them. Catchup opens the gate with its
 objective synthetic-sink lower bound. Begin has no acknowledgement. Deactivate
-clears run-local state, releases the processing session's DB client clone, and
+clears run-local state, releases both processing-session client clones, and
 acknowledges only after the local barrier is complete.
 
 ## Pending state and history — settled
@@ -184,8 +185,10 @@ pending competing candidate. Notifications retain the existing pending rule
 because their arrival order need not match committed order.
 
 A block named directly in `added` or `removed` that is confirmed
-nonmaterialized violates the retained-graph invariant and requests
-`Require(Rebuild)`. The database can no longer be trusted against node state.
+nonmaterialized is reported as a direct-chain materiality fault without
+applying the change. The
+[processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
+owns its recovery disposition.
 An identity-only member appearing only in an added block's merge set is an
 outside-boundary reference and is ignored by coloring. These cases are not
 equivalent.
@@ -193,15 +196,45 @@ equivalent.
 The storage transaction owns database-relative validation and all persistence
 and coloring behavior; see the
 [atomic VSPC transaction](storage.md#atomic-vspc-transaction--settled).
-For a synthetic candidate, a resolved-source mismatch or
-`VspcPathDiscontinuity` is
-`RecoveryInputInvalid(MalformedVspcResponse(SelectedParentPathDiscontinuity))`.
-For a notification candidate, it is
-`NotificationInputInvalid(MalformedVspcChange)`. Neither failure advances the
-committed sink. The
+The distinct `VspcSourceDiscontinuity` remains attributable to the candidate:
+VspcProcessor reports it together with the synthetic or notification source
+without running a selected-parent attribution probe.
+
+`VspcPathDiscontinuity(conflict)` is neutral evidence. VspcProcessor holds the
+failed head candidate and calls `rpc.full_block(conflict.child)` on its exact
+session generation. The probe is lifecycle-cancellable and does not advance
+the committed sink or make a synthetic cursor definitive. Compare the returned
+`selected_parent` into this processor-local result:
+
+```rust
+enum VspcPathAttribution {
+    StoredParentConflict,
+    CandidatePathConflict,
+    StoredAndCandidateConflict,
+    AttributionBlockUnavailable,
+}
+```
+
+```text
+current == expected, current != stored:
+    StoredParentConflict
+
+current == stored, current != expected:
+    CandidatePathConflict
+
+current != expected, current != stored:
+    StoredAndCandidateConflict
+
+definitive not-found:
+    AttributionBlockUnavailable
+```
+
+A malformed probe remains `MalformedGetBlock`. Transport, cancellation, or
+generation loss establishes no attribution and retains its existing typed node
+error. VspcProcessor reports the attribution result together with the candidate
+source, or reports that probe error unchanged. The
 [processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
-owns their distinct dispositions. A confirmed nonmaterialized direct chain
-member retains the distinct Rebuild disposition above.
+solely owns their retirement, retry-budget, and recovery-strength consequences.
 Definite readiness commits through
 `ValidatedDbClient::apply_vspc_change(ready)` and adopts the returned
 destination as the new committed sink.

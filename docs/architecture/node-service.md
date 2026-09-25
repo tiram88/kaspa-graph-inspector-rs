@@ -386,8 +386,9 @@ malformed transport shapes.
 
 #### Individual full-block GetBlock
 
-DependencyResolver obtains missing dependencies through the run's exact
-validated generation without holding a database transaction:
+DependencyResolver obtains missing dependencies, and VspcProcessor attributes
+a persisted selected-parent conflict, through the run's exact validated
+generation without holding a database transaction:
 
 ```rust
 impl ValidatedRpcClient {
@@ -402,10 +403,10 @@ The operation calls `GetBlock(hash, include_transactions = false)`, requires
 the returned hash to equal `hash`, and applies common full-block normalization.
 A wrong hash or normalization failure is
 `RecoveryInputInvalid(MalformedGetBlock)`. A definitive not-found result is
-reported separately so DependencyResolver can classify dependency
-unavailability. Transport, cancellation, and generation loss remain session
-faults. The processing lifecycle owns the recovery-versus-Live disposition of
-the malformed response.
+reported separately so each caller can apply its source-specific contract.
+Transport, cancellation, and generation loss remain session faults. The
+processing lifecycle owns the recovery-versus-Live disposition of a malformed
+response.
 
 ### Runtime protocol violation and generation retirement
 

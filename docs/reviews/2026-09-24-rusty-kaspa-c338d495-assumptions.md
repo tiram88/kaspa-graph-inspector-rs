@@ -17,6 +17,10 @@ is required by the PUAR contract.
 The stale-body-tip enumeration boundary is the accepted unverified risk named
 by the verification contract and is outside this review.
 
+Checklist item 8 was added by supplemental source analysis on 25 September
+2026. That analysis inspected the same full committed source object; it does
+not claim that the later local checkout HEAD still matched the pin.
+
 ## Result summary
 
 | Item | Result |
@@ -28,6 +32,7 @@ by the verification contract and is outside this review.
 | 5. `BlockAdded` duplicate and verbose-data behavior | **Confirmed** |
 | 6. Local consensus-parameter resolution | **Confirmed** |
 | 7. VSPC V2 batching and cursor behavior | **Confirmed** |
+| 8. VSPC path/GetBlock selected-parent correlation | **Confirmed** |
 
 No checklist item is `Not confirmed` or `Contradicted`. No architecture
 escalation is required from this review.
@@ -307,9 +312,41 @@ complete removed suffix, a complete added prefix, and an advancing cursor for
 every valid nonempty response at the pinned revision. KGI still owns malformed
 response validation and generation retirement.
 
+## 8. VSPC path/GetBlock selected-parent correlation
+
+**Result: Confirmed.**
+
+Header processing inserts every block into the reachability structure using
+that block's GhostDAG selected parent. VSPC chain-path construction walks the
+resulting backward or forward selected chain. The consensus entry point holds
+the pruning lock and accepts the low hash only when the retention root remains
+on its chain, so the returned path remains within the retained chain segment.
+GetBlock enrichment obtains the same block's GhostDAG data and exposes its
+selected parent as `selected_parent_hash`. VSPC path adjacency and enriched
+GetBlock therefore use the same selected-parent relation for a valid KGI query
+at the pinned revision.
+
+Evidence:
+
+- `consensus/src/pipeline/header_processor/processor.rs`, header processing,
+  lines 373-380.
+- `consensus/src/processes/traversal_manager.rs`,
+  `DagTraversalManager::calculate_chain_path`, lines 34-59.
+- `consensus/src/consensus/mod.rs`,
+  `Consensus::get_virtual_chain_from_block`, lines 846-865.
+- `consensus/src/model/services/reachability.rs`, selected-chain iterator
+  definitions, lines 134-160.
+- `rpc/service/src/converter/consensus.rs`,
+  `ConsensusConverter::get_block`, lines 61-83.
+
+KGI impact and limitation: KGI can use an enriched GetBlock for the conflicting
+child to attribute a persisted VSPC selected-parent mismatch. This correlation
+is established only for the pinned revision; runtime attribution still handles
+observable disagreement explicitly.
+
 ## Overall limitation
 
-This PUAR establishes the seven assumptions only for rusty-kaspa
+This PUAR establishes the eight assumptions only for rusty-kaspa
 `c338d495bec29e4dc8b5149f99e8db6fa916ed4a`. It does not establish parity for
 other revisions, custom builds, or a connected node's undisclosed effective
 overrides.

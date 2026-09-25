@@ -71,6 +71,9 @@ The PUAR checklist is:
    `RpcDataVerbosityLevel::None` preserves the documented batching, complete
    removed suffix, minimal acceptance-data envelope, complete-prefix
    shortening, and advancing cursor behavior.
+8. For [VSPC path attribution](vspc-processing.md#readiness-and-materiality--settled),
+   a valid retained-range VSPC query emits adjacent chain-path members using
+   the same GhostDAG selected-parent relation that enriched GetBlock exposes.
 
 For each item, inspect the committed source at the full SHA and report one of:
 
@@ -106,7 +109,7 @@ upstream change gives a concrete reason.
 
 Architecture accepts the
 [24 September 2026 PUAR](../reviews/2026-09-24-rusty-kaspa-c338d495-assumptions.md)
-against the full pinned revision above. All seven checklist items are
+against the full pinned revision above. All eight checklist items are
 `Confirmed`; none is `Not confirmed` or `Contradicted`. The focused contracts
 may therefore rely on those reviewed upstream behaviors for the pinned
 revision, subject to their stated KGI validation and recovery rules.
@@ -284,7 +287,8 @@ must not independently produce that certification.
 Verify the [atomic VSPC transaction](storage.md#atomic-vspc-transaction--settled)
 for source continuity, every removed and added selected-parent relationship,
 the removed/added pivot, direct-chain materiality, duplicate/intersection
-rejection, typed pre-mutation `VspcPathDiscontinuity`, atomic membership and
+rejection, typed pre-mutation `VspcSourceDiscontinuity` and structured
+`VspcPathDiscontinuity(VspcPathConflict)` evidence, atomic membership and
 coloring changes, merge-set members represented only by boundary identity, and
 final level-score publication.
 
@@ -305,8 +309,9 @@ and an exact no-transactions GetBlock header. Cover:
 - exact current-node-PP discovery and successful boundary-materiality proof;
 - successful `MaterializedSyncAnchor` construction, including a header-only
   node block and a committed sink whose retained-past proof succeeded;
-- exact propagation into both processor Begin payloads, including
-  VspcProcessor initialization of its committed sink and history seed;
+- exact RPC and DB generation propagation into both processor Begin payloads,
+  including VspcProcessor initialization of its committed sink and history
+  seed;
 - a definitively absent sink, incoherent stored sink, and a DAA mismatch
   requiring Rebuild;
 - an absent, identity-only, or retained-past-incomplete current node PP
@@ -389,22 +394,31 @@ with injected clocks and deterministic jitter:
 - recovery requirements do not consume Retry backoff;
 - one shared counter across malformed pruning-point, GetBlock, GetBlocks, and
   VSPC response kinds and all VSPC reasons, including
-  `RemovedChainWithoutAddedPath`, `LowHashPathMismatch`, and the later
-  `SelectedParentPathDiscontinuity`: each of the first three occurrences
-  retires its producing generation and retries only after replacement, the
-  fourth is Fatal, replacement generations and stronger recovery do not reset
-  the counter, `EnteredLive` does reset it, and NodeService reconnect delay is
-  not combined with the general recovery Retry delay;
-- later synthetic path discontinuity rolls back without sink advancement and
-  discards the provisional cursor and queued suffix, while the same notification
-  fault requires Resync without retiring the RPC generation or consuming the
-  malformed-response budget; and
+  `RemovedChainWithoutAddedPath`, `LowHashPathMismatch`,
+  `ResolvedSourceDiscontinuity`, and the later attributed
+  `SelectedParentPathDiscontinuity`: each malformed synthetic
+  occurrence retires its producing generation, the first three permit another
+  attempt after replacement, the fourth is Fatal, replacement generations and
+  stronger recovery do not reset the counter, `EnteredLive` does reset it, and
+  NodeService reconnect delay is not combined with the general recovery Retry
+  delay;
+- a later path conflict holds the candidate and leaves the sink and cursor
+  unchanged while the exact VspcProcessor RPC generation probes its child;
+  exercise current-parent equality with the expected parent, stored parent, and
+  neither parent, for both synthetic and notification sources;
+- persisted-parent disagreement requires Rebuild without retiring a generation
+  when the candidate agrees with the probe; candidate disagreement applies the
+  source policy; a synthetic conflict on both sides records Rebuild, retires and
+  counts the generation, while the notification form records Rebuild without
+  retirement or malformed-budget consumption;
+- malformed, definitively absent, transport-failed, cancelled, and
+  generation-lost attribution probes retain their distinct dispositions; and
 - typed fault kinds, never diagnostics, drive policy and counters.
 
 Verify [teardown](processing-lifecycle.md#teardown-and-delivery-semantics--settled)
-by asserting that session-scoped RPC and DB clones are released before
-`Deactivated`, cancellation races finish, and full versus closed bounded
-channels retain their distinct dispositions.
+by asserting that both processors' session-scoped RPC and DB clones are
+released before `Deactivated`, cancellation races finish, and full versus
+closed bounded channels retain their distinct dispositions.
 
 ## Block processing and dependency resolution
 
@@ -447,11 +461,12 @@ with:
 - structural crossing through `added` only;
 - destination-equal discard without creating an empty normalized change;
 - absence of overlap credit for unresolved or filtered candidates;
-- missing nonretained merge-set members at the PP boundary; and
+- missing nonretained merge-set members at the PP boundary;
 - direct nonmaterialized chain members requiring Rebuild;
 - a resolved synthetic source mismatch classified as
-  `SelectedParentPathDiscontinuity` rather than retained pending; and
-- source-specific mapping of the storage `VspcPathDiscontinuity` error.
+  `ResolvedSourceDiscontinuity` rather than retained pending; and
+- a storage `VspcPathDiscontinuity` held without mutation while VspcProcessor
+  performs the settled source-specific attribution.
 
 ## API and Web
 

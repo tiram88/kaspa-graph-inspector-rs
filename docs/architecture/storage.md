@@ -784,6 +784,12 @@ impl ValidatedDbClient {
         change: ReadyVspcChange,
     ) -> Result<VspcPoint, StorageError>;
 }
+
+struct VspcPathConflict {
+    child: BlockHash,
+    expected_parent: BlockHash,
+    stored_parent: BlockHash,
+}
 ```
 
 Storage requires the supplied source to equal the currently committed sink.
@@ -806,10 +812,14 @@ for every added i > 0:
 ```
 
 Every admitted change has nonempty `added`, so each expression above is
-defined. Any failed relationship returns the typed
-`VspcPathDiscontinuity` storage error before mutation. The
+defined. A failed `removed[0] == source` check returns the distinct typed
+`VspcSourceDiscontinuity` storage error. For the first failed selected-parent
+relationship in the order shown, return
+`VspcPathDiscontinuity(VspcPathConflict)` before mutation. Storage supplies the
+persisted evidence and expected relationship but does not attribute the
+conflict to either the database or the candidate. The
 [VspcProcessor contract](vspc-processing.md#readiness-and-materiality--settled)
-owns source-specific classification of that error.
+owns that attribution.
 
 The transaction applies, in order:
 
