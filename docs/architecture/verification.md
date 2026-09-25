@@ -152,13 +152,21 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
 4. Consensus parameter resolution uses exact `NetworkId` parameters when
    supported. Mainnet emits no divergence warning. Every non-mainnet profile,
    including supported testnet and simnet, warns with the exact network,
-   parameter source, and all three derived values, then continues. An
+   parameter source, and all four selected values, then continues. An
    unsupported testnet suffix uses testnet-family defaults. Devnet and simnet
    without `--override-params-file` use their defaults; with the option they
    parse and apply rusty-kaspa `OverrideParams`. An unreadable, malformed, or
    incompatible explicit file and use of the option with mainnet or any
    testnet suffix fail configuration without fallback. No path represents the
-   selected local values as having been compared with the node.
+   selected local values as having been compared with the node. Before any
+   derived rusty-kaspa call, cover accepted target-time bounds `1` and `1000`,
+   rejected values `0` and `1001`, the accepted minimum merge-set limit `2`,
+   rejected smaller limits, and checked failures for the GetBlocks budget,
+   VSPC batch size, and raw anticone expression. Also reject a derived
+   anticone depth above `MAX_BLUE_SCORE` and assert every accepted Catchup
+   threshold is at most `MAX_DAA_SCORE`. Every rejection returns
+   `InvalidConsensusParameters`, publishes no usable parameter or client
+   generation, performs no default fallback, and enters no connection retry.
 5. Given a fully empty `VirtualChainChanged`, NodeService drops it before
    bounded delivery with no overlap credit, processor-capacity use, or
    recovery. Distinguish it from an empty VSPC V2 RPC page.
@@ -366,9 +374,11 @@ Verify the [Catchup trigger](processing-lifecycle.md#catchup-trigger) with:
 
 1. Rolling marker replacement, replacement already present in the held page,
    cursor equality, and `Unknown -> Present -> Removed` tracking.
-2. Checked and decreasing DAA-score cases and the page-aware threshold at 1,
-   10, and 32 BPS. Catchup must precede dispatch of the complete held page only
-   when its VSPC-established marker satisfies the contract.
+2. Checked and decreasing DAA-score cases and the page-aware threshold for the
+   standard 1 and 10 BPS profiles and a 50 BPS override with
+   `mergeset_size_limit = 512`, using the prevalidated
+   `catchup_max_daa_gap`. Catchup must precede dispatch of the complete held
+   page only when its VSPC-established marker satisfies the contract.
 3. Independent fixtures for the global-maximum-position fallback, normalized
    GetBlocks length below three, and empty VSPC V2 page.
 4. A material pre-Catchup omission using the existing strict-processing

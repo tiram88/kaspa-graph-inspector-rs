@@ -84,10 +84,13 @@ struct KgiConsensusParams {
     bps: u64,
     mergeset_size_limit: u64,
     anticone_finalization_depth: u64,
+    /// KGI recovery threshold derived from the fields above; not a consensus
+    /// parameter supplied by rusty-kaspa or the connected node.
+    catchup_max_daa_gap: u64,
 }
 ```
 
-Add copied parameters only when KGI behavior actually depends on them.
+Add fields only when KGI behavior actually depends on them.
 
 ### Consensus parameter resolution
 
@@ -137,13 +140,85 @@ configuration error and never falls back silently. The file is not persisted
 in node metadata. Genesis remains RPC-discovered and is not taken from the
 file.
 
-Obtain the copied values from the resolved `Params` through `bps()`,
-`mergeset_size_limit()`, and `anticone_finalization_depth()`; do not reproduce
-either upstream formula inside KGI. Every non-mainnet network emits a
-divergence warning that logs the exact `NetworkId`, the parameter source, and
-all three values KGI will use, then processing continues. Mainnet does not emit
-this warning because the official rusty-kaspa daemon rejects parameter
-overrides there. The
+After applying any override, inspect the resolved raw `BlockrateParams` before
+calling a derived rusty-kaspa method. The parameter set is admissible only
+when all of these checks succeed:
+
+```text
+1 <= target_time_per_block <= 1000 milliseconds
+mergeset_size_limit >= 2
+
+checked(mergeset_size_limit + 1)
+checked(10 * mergeset_size_limit)
+
+checked(
+    finality_depth
+    + merge_depth
+    + 4 * mergeset_size_limit * ghostdag_k
+    + 2 * ghostdag_k
+    + 2
+)
+```
+
+The target-time bound prevents division by zero and a zero result from
+rusty-kaspa's integer `bps()` calculation. The merge-set lower bound preserves
+the lifecycle's normalized-page-length Catchup fallback. The two merge-set
+operations protect the GetBlocks core budget and VSPC V2 added batch premise.
+The checked anticone expression is an admissibility preflight for the pinned
+upstream method, not an independently selected consensus formula.
+
+Only after that preflight, obtain `bps`, `mergeset_size_limit`, and
+`anticone_finalization_depth` from the resolved `Params` through `bps()`,
+`mergeset_size_limit()`, and `anticone_finalization_depth()`. Construct the
+KGI-owned threshold with checked arithmetic:
+
+```text
+catchup_max_daa_gap = max(
+    checked(30 * bps),
+    checked(mergeset_size_limit + 1),
+)
+```
+
+Require `anticone_finalization_depth <= MAX_BLUE_SCORE` and
+`catchup_max_daa_gap <= MAX_DAA_SCORE`. The resulting threshold provides at
+least one complete GetBlocks core page of transition granularity. Its values
+are 181 for the standard 1 BPS profile, 300 for the standard 10 BPS profile,
+and 1,500 for a 50 BPS override with `mergeset_size_limit = 512`.
+
+Any failed bound or checked operation returns this typed startup configuration
+error:
+
+```rust
+enum ConsensusParameter {
+    TargetTimePerBlock,
+    MergeSetSizeLimit,
+    GetBlocksCoreBudget,
+    VspcV2AddedBatchSize,
+    AnticoneFinalizationDepth,
+    CatchupMaxDaaGap,
+}
+
+enum ConsensusParameterReason {
+    BelowMinimum,
+    AboveMaximum,
+    ArithmeticOverflow,
+}
+
+struct InvalidConsensusParameters {
+    parameter: ConsensusParameter,
+    reason: ConsensusParameterReason,
+}
+```
+
+The error publishes no `KgiConsensusParams` or validated client, does not enter
+NodeService's transient retry loop, and never falls back to defaults. The
+offending value or arithmetic operands belong in diagnostics and do not drive
+control flow.
+
+Every non-mainnet network emits a divergence warning that logs the exact
+`NetworkId`, the parameter source, and all four `KgiConsensusParams` values,
+then processing continues. Mainnet does not emit this warning because the
+official rusty-kaspa daemon rejects parameter overrides there. The
 [PUAR](verification.md#current-puar-result) checks local resolution and values
 at the reference revision. It does not claim equality with a connected node or
 custom build. Correct processing requires the node's effective values to match
