@@ -197,10 +197,12 @@ Disabled | Enabled | Retired
 - A full destination channel means notification loss: disable both streams and
   report `Require(Resync)`.
 - An Enabled `BlockAdded` is normalized to `ValidatedNodeBlock` before bounded
-  delivery. On normalization failure, disable both streams, enqueue no block,
-  and report `NotificationInputInvalid(MalformedBlockAdded)`; the
+  delivery. On failure, disable both streams and enqueue no block. A score-range
+  failure retains its `ScoreOutOfRange` classification; any other intrinsic
+  normalization failure reports
+  `NotificationInputInvalid(MalformedBlockAdded)`. The
   [processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
-  owns its disposition.
+  owns both dispositions.
 - Before attempting the bounded VSPC send, validate raw
   VirtualChainChanged notification structure in this order:
   1. Empty `removed` and empty `added` is the valid upstream no-op. Discard it;
@@ -283,11 +285,21 @@ contract owned by the
 optional verbose data, and an unvalidated shared-block wrapper never cross the
 NodeService boundary. Transactions are ignored.
 
+The common normalizer checks raw DAA and blue scores against the domain-owned
+`MAX_DAA_SCORE` and `MAX_BLUE_SCORE`. Apply the same checks to header-only node
+responses before their scores enter a `MaterializedSyncAnchor`, Catchup
+calculation, or other processing input. An excessive score returns the typed
+`ScoreOutOfRange(DaaScore)` or `ScoreOutOfRange(BlueScore)` result. It is not a
+malformed RPC shape and is never remapped to a source-specific malformed-input
+kind.
+
 The operation that obtained a raw block additionally validates its contextual
 expected hash. Source-specific response classification remains outside the
-common normalizer: GetBlocks, individual GetBlock, current-pruning-point, and
-BlockAdded inputs retain their distinct fault classifications and lifecycle
-dispositions.
+common normalizer for every other intrinsic failure: GetBlocks, individual
+GetBlock, current-pruning-point, and BlockAdded inputs retain their distinct
+fault classifications and lifecycle dispositions. The
+[processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
+owns range-fault and malformed-input dispositions.
 
 #### Current pruning-point block
 
@@ -313,7 +325,7 @@ invoke this operation and how they consume its normalized result.
 
 A mismatched response network, ORIGIN pruning-point hash, wrong returned block
 hash, definitive not-found for the advertised pruning point, or failure of
-common full-block normalization is
+common full-block normalization for a reason other than score range is
 `RecoveryInputInvalid(MalformedPruningPointResponse)`. The exact validated RPC
 generation is retired and the shared malformed recovery-input policy applies.
 A transport failure, cancellation, or generation loss remains a session fault
@@ -334,7 +346,7 @@ and does not establish a reconciliation mismatch.
 
 Unequal vectors, an empty raw response, a first hash other than `low_hash`, a
 hash/block disagreement, any duplicate, or any member that fails common
-full-block normalization is
+full-block normalization for a reason other than score range is
 `RecoveryInputInvalid(MalformedGetBlocks)` when encountered by the recovery
 pump. Reject the complete page before advancing its cursor or sending any
 member to a processor. A valid anchor-only response that normalizes to zero
@@ -405,7 +417,7 @@ impl ValidatedRpcClient {
 
 The operation calls `GetBlock(hash, include_transactions = false)`, requires
 the returned hash to equal `hash`, and applies common full-block normalization.
-A wrong hash or normalization failure is
+A wrong hash or non-range intrinsic normalization failure is
 `RecoveryInputInvalid(MalformedGetBlock)`. A definitive not-found result is
 reported separately so each caller can apply its source-specific contract.
 Transport, cancellation, and generation loss remain session faults. The

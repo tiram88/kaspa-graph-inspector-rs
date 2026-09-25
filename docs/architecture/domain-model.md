@@ -13,6 +13,9 @@ Rust declarations follow the semantic-shape convention in the
 ## Shared value types — settled
 
 ```rust
+const MAX_DAA_SCORE: u64 = i64::MAX as u64 - 1;
+const MAX_BLUE_SCORE: u64 = i64::MAX as u64;
+
 struct ValidatedNodeBlock {
     hash: BlockHash,
     selected_parent: BlockHash,
@@ -47,6 +50,14 @@ struct MaterializedSyncAnchor {
     blue_score: u64,
 }
 ```
+
+Every KGI DAA score is in `0..=MAX_DAA_SCORE`, and every KGI blue score is in
+`0..=MAX_BLUE_SCORE`. The fields remain ordinary `u64`; these constants define
+their semantic ranges without introducing wrapper types. The DAA range leaves
+`i64::MAX` available for storage's no-VSPC sentinel. The blue-score range
+matches the signed PostgreSQL representation of the retained pruning-point
+score. These are KGI representability limits, not claims that rusty-kaspa's
+upstream `u64` values can never exceed them.
 
 `ValidatedNodeBlock` is the sole full-block value allowed to cross from
 NodeService into processing or storage. It is a flattened normalized value,

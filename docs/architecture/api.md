@@ -248,8 +248,10 @@ detailed cancellation and transaction mechanism remains deferred in the
 
 ## DAA navigation and graph windows — settled
 
-For valid query `0 <= q < i64::MAX`, resolve a DAA target by current VSPC
-floor, with the **highest level** among score ties. The
+Accept `q` only within the shared
+[`0..=MAX_DAA_SCORE` range](domain-model.md#shared-value-types--settled), then
+resolve a DAA target by current VSPC floor, with the **highest level** among
+score ties. The
 [storage contract](storage.md#historical-read-contracts--settled) owns the
 indexed database lookup and consistent historical transaction.
 

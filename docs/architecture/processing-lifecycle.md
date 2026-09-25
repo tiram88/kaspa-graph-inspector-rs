@@ -137,6 +137,11 @@ enum PersistenceFault {
     RetryExhausted,
     AmbiguousCommit,
 }
+enum ScoreRangeFault {
+    DaaScore,
+    BlueScore,
+    BoundarySealThreshold,
+}
 enum FaultKind {
     ServiceGenerationLost(ServiceKind),
     NotificationContinuityLost(NotificationStream),
@@ -145,6 +150,7 @@ enum FaultKind {
     ReconciliationFailed,
     MaterialityViolation,
     DependencyUnavailable,
+    ScoreOutOfRange(ScoreRangeFault),
     Persistence(PersistenceFault),
     Ownership,
 }
@@ -187,6 +193,17 @@ do.
   is not proof of dependency unavailability.
 - A block whose own hash is already a permanent boundary identity reports
   `MaterialityViolation` and requires Rebuild directly.
+- `ScoreOutOfRange(DaaScore)` and `ScoreOutOfRange(BlueScore)` identify node
+  values outside KGI's shared representable ranges.
+  `ScoreOutOfRange(BoundarySealThreshold)` identifies a boundary-threshold
+  addition that overflows `u64` or exceeds `MAX_BLUE_SCORE`. Each is `Fatal`:
+  retry, Rebuild, or a replacement RPC generation cannot make the value
+  representable. A range fault does not retire the validated RPC generation or
+  consume the malformed recovery-response budget. The actual value or addition
+  operands belong in diagnostics and do not select control flow.
+- Storage's defensive `StorageError::ScoreOutOfRange` maps to the corresponding
+  `ScoreOutOfRange(DaaScore)` or `ScoreOutOfRange(BlueScore)` fault and the same
+  Fatal disposition; it is not a persistence retry.
 - A malformed BlockAdded notification reports
   `NotificationInputInvalid(MalformedBlockAdded)`, disables notification
   routing, and requires Resync. It does not retire the validated RPC generation
@@ -423,6 +440,11 @@ sink despite also storing `db_pp_blue_score = 0`.
 The threshold uses `anticone_finalization_depth` from the run's exact
 `ValidatedNodeInfo.consensus`. It is current-session recovery input, not
 persisted node metadata or a database-compatibility field.
+
+For a non-Genesis PP, construct the threshold with `u64::checked_add` and
+require the result to be at most the shared `MAX_BLUE_SCORE`. Failure reports
+`ScoreOutOfRange(BoundarySealThreshold)` under the fault policy above; never
+wrap, saturate, or continue with an unreachable threshold.
 
 A missing or inconsistent stored sink, a definitive absent response from the
 node, a stored/returned DAA-score mismatch, or another failed reconciliation

@@ -394,7 +394,8 @@ block_identifiers(
 blocks(
     id BIGINT PRIMARY KEY REFERENCES block_identifiers(id),
     timestamp BIGINT NOT NULL,
-    daa_score BIGINT NOT NULL,
+    daa_score BIGINT NOT NULL
+        CHECK (daa_score >= 0 AND daa_score < 9223372036854775807),
     level BIGINT NOT NULL CHECK (level > 0),
     slot BIGINT NOT NULL CHECK (slot >= 0),
     selected_parent_id BIGINT NOT NULL REFERENCES block_identifiers(id),
@@ -409,6 +410,7 @@ levels(
     level BIGINT PRIMARY KEY CHECK (level > 0),
     size BIGINT NOT NULL CHECK (size > 0),
     daa_score BIGINT NOT NULL DEFAULT 9223372036854775807
+        CHECK (daa_score >= 0)
 );
 
 parents(
@@ -443,6 +445,23 @@ backstop, and `levels.size` changes atomically with block insertion.
 `levels.daa_score = i64::MAX` means that the level has no current VSPC block.
 New levels use this sentinel, not zero. At most one current VSPC block occupies
 a level, but a reorg can leave an existing level without one.
+
+The database representation enforces the score ranges owned by the
+[domain model](domain-model.md#shared-value-types--settled). The node-metadata
+column for `db_pp_blue_score` is a nonnegative `BIGINT`; its signed upper bound
+is `MAX_BLUE_SCORE`. Bind domain scores only through checked `i64::try_from`
+conversion, and reject negative SQL values before converting them to `u64`.
+Storage APIs defensively reject an out-of-range caller value as typed
+`StorageError::ScoreOutOfRange(DaaScore)` or
+`StorageError::ScoreOutOfRange(BlueScore)` before opening a mutation
+transaction; the
+[processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
+owns its fault disposition.
+
+During database validation, a compatible bound schema containing a negative
+score, the no-VSPC sentinel in `blocks.daa_score`, or another score outside its
+semantic range is `Inconsistent` and is usable only for Rebuild. A current
+schema's checks prevent KGI from creating such contents.
 
 The committed materialized VSPC sink is derived as the maximum-ID materialized
 block with
@@ -917,9 +936,9 @@ before constructing the anchor.
 
 ## Historical read contracts — settled
 
-For valid query `0 <= q < i64::MAX`, the indexed database DAA-floor lookup
-selects the greatest current VSPC score not exceeding `q`, breaking ties by
-the highest level:
+For a query in the domain-owned DAA-score range, the indexed database DAA-floor
+lookup selects the greatest current VSPC score not exceeding `q`, breaking
+ties by the highest level:
 
 ```sql
 SELECT level

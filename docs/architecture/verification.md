@@ -202,6 +202,12 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
     order. Exercise the valid empty no-op and each typed nonempty-removed,
     duplicate-member, and removed/added-intersection result; malformed input
     is not enqueued and disables routing without retiring the RPC generation.
+13. Exercise `MAX_DAA_SCORE` and `MAX_BLUE_SCORE` successfully, then exceed
+    each by one in full-block and header-only responses. Every excessive node
+    value reports the corresponding `ScoreOutOfRange` fault, returns no
+    normalized value, is Fatal without retiring the RPC generation, and does
+    not consume the malformed recovery-response budget. Include BlockAdded,
+    GetBlocks, current-pruning-point, and individual GetBlock sources.
 
 Use injected clocks and deterministic jitter to verify the independent
 [NodeService](node-service.md#nodeservice--settled) and
@@ -273,6 +279,12 @@ and [rebuild transaction](storage.md#rebuild-transaction--settled) with:
     `SinkNotBoundaryMaterialized` case, coherent Empty, inconsistent contents,
     and operational storage failure as distinct outcomes. A retained-past
     incomplete committed sink must not produce `MaterializedSyncAnchor`.
+13. Exercise checked score conversion at zero and both domain maxima. SQL
+    rejects writes outside the persisted ranges. Compatible bound contents
+    with a negative score or the DAA sentinel stored as a real block score are
+    classified `Inconsistent`, while a defensive out-of-range storage input is
+    rejected before mutation with the typed DAA or blue
+    `StorageError::ScoreOutOfRange` reason.
 
 Verify the [block materialization transaction](storage.md#block-materialization-transaction--settled)
 and [PP seal behavior](block-processing.md#pp-boundary-phase-behavior--settled)
@@ -329,7 +341,11 @@ and an exact no-transactions GetBlock header. Cover:
 - transport or session failure without inferring Rebuild; and
 - a response carrying the wrong hash or missing required GhostDAG header data
   as `MalformedGetBlock`, retiring the exact RPC generation without inferring
-  Rebuild.
+  Rebuild; and
+- non-Genesis boundary-threshold construction at `MAX_BLUE_SCORE`, plus
+  checked-add overflow and an otherwise representable sum above that maximum;
+  both failures report `ScoreOutOfRange(BoundarySealThreshold)` without
+  wrapping or saturation.
 
 Verify Rebuild obtains one normalized current pruning-point block, completes
 the API Reset barrier, and passes that same `ValidatedNodeBlock` to
@@ -496,7 +512,8 @@ GraphEpoch per prepared processing session.
 Verify [DAA navigation and graph windows](api.md#daa-navigation-and-graph-windows--settled)
 for floor selection and tie break, the sentinel result, a reorg-created
 VSPC-empty level, atomic level-score publication, and navigation plus window
-consistency from one image.
+consistency from one image. Accept zero and `MAX_DAA_SCORE` as query bounds and
+reject the no-VSPC sentinel as a real DAA query.
 
 Verify deltas and client behavior across
 [API publication](api.md#snapshot-revision-delta-sse-and-etags--settled) and
