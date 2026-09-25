@@ -632,6 +632,16 @@ composition and expiry, response-local hash dictionaries,
 clients, fixed-view freeze, DAA focus, and Live arriving during PostSeal load.
 The latter must publish the completed image directly as Live.
 
+Delta cases cover idempotent replay of absolute patches; equality between
+sequential application and a directly or incrementally composed interval;
+associative graph-state effects across three adjacent intervals; later-value,
+insertion-folding, target-coverage, and response-dictionary composition; and
+rejection of cross-epoch or nongapless composition. Under a small response
+budget, verify advancement through complete intermediate intervals and that no
+block, VSPC, lifecycle-state, or coverage revision is split. A first atomic
+revision that cannot fit requires a fresh snapshot rather than a partial
+delta.
+
 Coverage cases require snapshots and deltas to carry their target revision's
 complete HGC boundary independently of the response's effective window. Verify
 the inclusive coverage invariant and monotonicity of both bounds within an

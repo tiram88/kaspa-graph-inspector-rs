@@ -184,13 +184,49 @@ apply(Delta(b,c), image_at_b) = image_at_c
 A lifecycle-only revision carries the publication-state update even when graph
 data is unchanged.
 
-Absolute set/upsert patches are preferable to fragile relative instructions.
-Each delta response uses its own response-local hash dictionary and carries its
-target `HeadGraphCoverage`. Retention is bounded. Epoch mismatch, unavailable
-revision, stale API, or too-old cursor requires a fresh snapshot, never a
-partial delta. Whether adjacent revisions are encoded as individual records or
-a coalesced patch is implementation choice as long as the composability
-contract holds.
+Delta mutations are idempotent absolute set/upsert patches. They state the
+resulting public block, block-state, level, publication-state, and coverage
+values rather than relative operations such as increment, decrement, or
+toggle. Reapplying one delta therefore produces the same graph state. Each
+delta response uses its own response-local hash dictionary and carries its
+target `HeadGraphCoverage`.
+
+Gapless intervals in one GraphEpoch compose without reading the starting graph:
+
+```text
+compose(Delta(a,b), Delta(b,c)) = Delta(a,c)
+```
+
+Composition requires the same GraphEpoch and exact equality between the left
+`to` and right `from` cursors. The result uses `a` as `from`, `c` as `to`, and
+revision `c`'s coverage and publication state. A later absolute value for the
+same entity wins; updates following an insertion fold into that block's final
+public state; and reference-only endpoint metadata still required by a
+crossing edge is retained. Composition decodes both response-local dictionaries
+to hashes and constructs a self-contained dictionary for the result.
+
+Composition is associative by graph-state effect. A composed encoding need not
+be byte-identical to a delta constructed directly for the same interval, but:
+
+```text
+apply(compose(Delta(a,b), Delta(b,c)), image_at_a)
+    = apply(Delta(b,c), apply(Delta(a,b), image_at_a))
+```
+
+A request from cursor `a` captures a desired target cursor `t`. If the complete
+`Delta(a,t)` exceeds the response budget, return the largest nonempty prefix
+`Delta(a,b)` that fits and ends at a complete revision boundary; the client
+continues from `b`. Never split one block revision, atomic VSPC revision,
+lifecycle-state revision, or its target coverage. If the first required atomic
+revision cannot fit, incremental advancement is unavailable and the response
+requires a fresh snapshot. Existing response-size and head-availability rules
+apply if that snapshot cannot be served completely.
+
+Delta retention is bounded. Epoch mismatch, unavailable revision, stale API,
+or too-old cursor also requires a fresh snapshot. No outcome returns a
+structurally partial revision. Whether a complete interval is encoded as
+individual revision records or one coalesced absolute patch remains an
+implementation choice under this composition contract.
 
 SSE is only an ordered **cursor wakeup** `(epoch, revision)`, not the graph
 data channel. A browser `EventSource` can receive a sequence on one

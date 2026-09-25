@@ -18,6 +18,12 @@ state comes from HTTP delta or snapshot responses.
 Head-following stays prompt. On GraphEpoch change, a head-following view
 automatically reloads.
 
+A delta response may end at an intermediate revision below the Web's desired
+cursor. The single catch-up loop applies that complete interval, adopts its
+`to` cursor, and requests the next interval until it reaches the desired cursor
+or the API requires a snapshot. It never assumes one response reaches the
+original target. Reapplying an already received absolute delta is harmless.
+
 For every accepted head delta, the Web adopts its target
 `HeadGraphCoverage`. It removes block and level contents below
 `retain_from_level`, while preserving reference-only endpoint metadata still
