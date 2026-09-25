@@ -532,6 +532,9 @@ with:
   Catchup;
 - bounded pending order where one unready candidate does not block a later
   actionable candidate;
+- repeated `PersistedBlock` delivery for one hash reuses the first history
+  record without content comparison and leaves both history indexes unchanged;
+  a new hash updates both indexes in one local transition;
 - structural crossing through `added` only;
 - a pending exact notification replay, a same-destination contradictory body,
   and multiple distinct actionable moves from the committed source, each with

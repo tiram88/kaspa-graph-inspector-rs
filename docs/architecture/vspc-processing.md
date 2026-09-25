@@ -109,6 +109,14 @@ The anchor and every `PersistedBlock` originate from a semantic
 result. VspcProcessor receives later history entries only through
 BlockProcessor's `PersistedBlock` delivery.
 
+Block hash is the sole replay identity under the
+[domain-model immutability contract](domain-model.md#shared-value-types--settled).
+When `by_hash` already contains an incoming `PersistedBlock` hash,
+VspcProcessor reuses the existing history record without comparing payload
+fields and leaves both indexes unchanged. For a new hash, insert `by_hash` and
+`by_order` as one local state transition with no await or observable partial
+update between them.
+
 These pending structures share one bounded capacity. A single
 `HashMap<BlockHash, Vec<VspcChange>>` cannot represent multi-dependency
 readiness and ordered candidate selection.

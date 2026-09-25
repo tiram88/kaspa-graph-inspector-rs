@@ -81,6 +81,12 @@ and no actual direct parents. Ordered merge-set vectors preserve node order.
 The type proves intrinsic node-block validity only; it makes no claim that any
 referenced hash is materialized in the current database.
 
+`BlockHash` is the immutable block identity. Every accepted representation of
+one hash denotes the same block and the same deterministic consensus metadata,
+including its `ConsensusOrder` and selected parent. A cryptographic hash
+collision is outside KGI's runtime fault model. This is a Kaspa block identity
+property, not a revision-specific upstream assumption.
+
 `ConsensusOrder` sorts lexicographically by `(blue_work, hash)`. `VspcPoint`
 contains that order and must not duplicate the block hash. Explicit `hash()`,
 `order()`, and `id()` accessors are allowed; `Deref` must not model the
