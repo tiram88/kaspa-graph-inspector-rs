@@ -49,9 +49,13 @@ Off-window parent endpoints do not extend the fixed block window for this
 test. On GraphEpoch change, a fixed view retains its current image marked
 frozen/stale. Explicit refresh reruns the original anchor query.
 
-A DAA request resolves the DAA to a level at request time, then focuses on
-that level. If later reorgs change that level's DAA, keep focus on the level;
-do not repeatedly resolve the original DAA target again.
+For every successful level, block-hash, or DAA window request, the Web retains
+the original anchor and adopts the response's `GraphWindowResolution`.
+`resolved_level` is the fixed focus for that image and subsequent deltas do not
+re-resolve the original anchor. Explicit refresh resubmits that anchor and
+replaces the stored resolution with the new response. In particular, if later
+reorgs change a DAA-resolved level's score, keep focus on the resolved level
+rather than resolving the original DAA score again.
 
 Fixed-view revision catch-up is distance-adaptive, not a blanket slow path.
 Define:

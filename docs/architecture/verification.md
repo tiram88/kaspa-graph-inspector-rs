@@ -617,6 +617,13 @@ VSPC-empty level, atomic level-score publication, and navigation plus window
 consistency from one image. Accept zero and `MAX_DAA_SCORE` as query bounds and
 reject the no-VSPC sentinel as a real DAA query.
 
+Verify successful level, block-hash, and DAA anchors return a
+`GraphWindowResolution` whose resolved level lies in its effective capped
+range and whose resolution and graph contents come from the same HGC image or
+database transaction. Browser cases retain the original anchor, keep the
+returned level fixed across deltas, and re-resolve only when explicit refresh
+resubmits that anchor.
+
 Verify deltas and client behavior across
 [API publication](api.md#snapshot-revision-delta-sse-and-etags--settled) and
 [Web update acquisition](web.md#update-acquisition--settled): sequential delta

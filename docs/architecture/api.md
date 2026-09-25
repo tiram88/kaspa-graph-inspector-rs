@@ -282,6 +282,28 @@ detailed cancellation and transaction mechanism remains deferred in the
 
 ## DAA navigation and graph windows — settled
 
+```rust
+struct GraphWindowResolution {
+    resolved_level: u64,
+    effective_start_level: u64,
+    effective_end_level: u64,
+}
+```
+
+Every successful anchored window response carries `GraphWindowResolution`,
+independently of whether its one anchor is a level, block hash, or DAA score.
+The resolved level is the fixed focus selected for that request, and the
+effective bounds are the actual capped block-level range returned around it:
+
+```text
+effective_start_level <= resolved_level <= effective_end_level
+```
+
+For a level anchor, `resolved_level` is the retained requested level. For a
+block-hash anchor, it is the materialized block's coordinate level. For a DAA
+anchor, it is the VSPC-floor result defined below. Resolution and graph contents
+come from the same immutable HGC image or consistent database transaction.
+
 Accept `q` only within the shared
 [`0..=MAX_DAA_SCORE` range](domain-model.md#shared-value-types--settled), then
 resolve a DAA target by current VSPC floor, with the **highest level** among
@@ -311,9 +333,11 @@ Exact endpoint URLs, HTTP methods, the final wire schema, and the graph wire
 format remain deferred in the [decision register](../decisions/deferred.md).
 
 Every graph response carries its hash dictionary. A window fully served by HGC
-has a live cursor. A historical DB-backed window is a static image without a
-cursor, capped by `MAX_WINDOW_DEPTH`. Requests crossing HGC's lower bound take
-the consistent DB path; head depth itself never forces this fallback.
+has a live cursor and `HeadGraphCoverage` in addition to its
+`GraphWindowResolution`. A historical DB-backed window is a static image
+without a cursor, capped by `MAX_WINDOW_DEPTH`. Requests crossing HGC's lower
+bound take the consistent DB path; head depth itself never forces this
+fallback.
 
 ## Resource isolation and saturation — settled
 
