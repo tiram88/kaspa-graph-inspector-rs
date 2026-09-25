@@ -103,7 +103,20 @@ enum Component {
 }
 enum ServiceKind { Node, Storage }
 enum NotificationStream { BlockAdded, Vspc, Both }
-enum NotificationInputKind { MalformedBlockAdded, MalformedVspcChange }
+enum MalformedVspcNotificationReason {
+    RemovedChainWithoutAddedPath,
+    DuplicateChainMember,
+    RemovedAddedIntersection,
+    ResolvedSourceDiscontinuity,
+    SelectedParentPathDiscontinuity,
+    DuplicatePendingTransition,
+    ContradictoryDestination,
+    CompetingNextMove,
+}
+enum NotificationInputKind {
+    MalformedBlockAdded,
+    MalformedVspcChange(MalformedVspcNotificationReason),
+}
 enum MalformedVspcResponseReason {
     RemovedChainWithoutAddedPath,
     NonAdvancingAddedCursor,
@@ -179,11 +192,14 @@ do.
   routing, and requires Resync. It does not retire the validated RPC generation
   or consume the malformed recovery-response budget.
 - A malformed VSPC notification reports
-  `NotificationInputInvalid(MalformedVspcChange)` and requires Resync under the
-  same notification-source policy.
+  `NotificationInputInvalid(MalformedVspcChange(reason))`, disables
+  notification routing, and requires Resync under the same
+  notification-source policy. It neither retires the validated RPC generation
+  nor consumes the malformed recovery-response budget.
 - A `VspcSourceDiscontinuity` reported for a synthetic candidate is
   `RecoveryInputInvalid(MalformedVspcResponse(ResolvedSourceDiscontinuity))`.
-  The notification form is `NotificationInputInvalid(MalformedVspcChange)`.
+  The notification form is
+  `NotificationInputInvalid(MalformedVspcChange(ResolvedSourceDiscontinuity))`.
 
 VspcProcessor's typed
 [`VspcPathAttribution`](vspc-processing.md#readiness-and-materiality--settled)
@@ -192,9 +208,9 @@ result maps to lifecycle policy as follows:
 | Attribution | Synthetic candidate | Notification candidate |
 |---|---|---|
 | `StoredParentConflict` | `ReconciliationFailed`, `Require(Rebuild)`, and keep the RPC generation | `ReconciliationFailed`, `Require(Rebuild)`, and keep the RPC generation |
-| `CandidatePathConflict` | `RecoveryInputInvalid(MalformedVspcResponse(SelectedParentPathDiscontinuity))`; retire and count the RPC generation | `NotificationInputInvalid(MalformedVspcChange)`; disable routing and `Require(Resync)` |
-| `StoredAndCandidateConflict` | The same recovery-input fault with a Rebuild obligation; retire and count the RPC generation | The same notification-input fault strengthened to Rebuild; disable routing |
-| `AttributionBlockUnavailable` | Treat the synthetic current generation as malformed `SelectedParentPathDiscontinuity`; retire and count it | Treat the notification as malformed; disable routing and `Require(Resync)` |
+| `CandidatePathConflict` | `RecoveryInputInvalid(MalformedVspcResponse(SelectedParentPathDiscontinuity))`; retire and count the RPC generation | `NotificationInputInvalid(MalformedVspcChange(SelectedParentPathDiscontinuity))`; disable routing and `Require(Resync)` |
+| `StoredAndCandidateConflict` | The same recovery-input fault with a Rebuild obligation; retire and count the RPC generation | `NotificationInputInvalid(MalformedVspcChange(SelectedParentPathDiscontinuity))`, strengthened to Rebuild; disable routing |
+| `AttributionBlockUnavailable` | Treat the synthetic current generation as malformed `SelectedParentPathDiscontinuity`; retire and count it | `NotificationInputInvalid(MalformedVspcChange(SelectedParentPathDiscontinuity))`; disable routing and `Require(Resync)` |
 
 Only the two stored-state outcomes establish Rebuild. Notification outcomes
 never retire the validated RPC generation or consume the malformed
@@ -204,6 +220,14 @@ RPC generation: during active recovery it consumes the shared malformed-input
 budget, while in Live it requires Resync without consuming that recovery-only
 budget. Attribution transport, cancellation, or generation loss is a session
 fault and establishes neither candidate nor database blame.
+
+A defensive storage `VspcMemberSetViolation` maps by candidate source. For a
+synthetic candidate it becomes
+`RecoveryInputInvalid(MalformedVspcResponse(reason))`; for a notification it
+becomes `NotificationInputInvalid(MalformedVspcChange(reason))`. The reason is
+the corresponding `DuplicateChainMember` or `RemovedAddedIntersection`
+variant. Apply the same recovery-response or notification-source disposition
+defined above; storage does not decide it.
 
 When the same validated RPC and DB generations remain Ready, whole-attempt
 recovery retries use nominal delays `1s, 2s, 4s, 8s, 16s, 30s`, capped at

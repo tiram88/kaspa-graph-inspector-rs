@@ -119,8 +119,34 @@ The exact pending capacity remains deferred in the
 
 Resolve both source and destination before a notification becomes actionable.
 An unresolved older notification must not head-block a later actionable one or
-earn overlap merely because its raw destination hash is known. Distinct
-incompatible resolved candidates require Resync.
+earn overlap merely because its raw destination hash is known.
+
+Notification insertion first searches both unresolved and resolved pending
+notification state for the destination hash. This check precedes endpoint
+resolution and committed-sink filtering:
+
+- no pending notification with that destination permits insertion;
+- identical `removed` and `added` vectors report
+  `DuplicatePendingTransition`; and
+- different vectors for the same destination report
+  `ContradictoryDestination`.
+
+Neither collision is coalesced. Synthetic and notification candidates remain
+separate streams, so a synthetic candidate and a notification with the same
+destination do not collide under this rule; Catchup overlap handles that
+case.
+
+Before committing a notification in any phase, scan the currently resolved
+candidates. At most one distinct notification candidate may be actionable
+from the committed sink. Two or more such candidates report
+`CompetingNextMove`; VspcProcessor must not choose between them.
+
+VspcProcessor reports these three pending-state violations as
+`MalformedVspcChange(DuplicatePendingTransition)`,
+`MalformedVspcChange(ContradictoryDestination)`, or
+`MalformedVspcChange(CompetingNextMove)`. The
+[processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
+solely owns their recovery disposition.
 
 Committed VSPC transitions are continuous and monotonic:
 
@@ -266,8 +292,10 @@ order:
 
 1. Resolve `D = added.last()`. If `D.order <= C.order`, discard the
    notification under the lower-bound rules. Accepted retained history may
-   prove the meeting and earn overlap credit. `D == C` is a discard, never an
-   empty normalized change.
+   prove the meeting and earn overlap credit. After the pending-destination
+   collision check above, `D == C` is an already committed or overtaken
+   notification and is discarded; it is not a detectable duplicate pending
+   transition and never becomes an empty normalized change.
 2. If `D.order > C.order` and `C.hash` occurs in `added`, discard `removed`
    and the `added` prefix through `C`. The necessarily nonempty added-only
    suffix has source `C` and is actionable after endpoint readiness.
@@ -281,10 +309,8 @@ actionable change before readiness.
 
 A notification proved by accepted history to meet the committed synthetic
 stream sets VspcProcessor's `AtomicBool` overlap flag. Filtered older
-latecomers receive no credit. A duplicate transition from the notification
-source is an invariant violation requiring Resync, not an idempotent discard.
-ResyncEngine owns observation of the overlap flag and the global ordinary
-eligibility predicate.
+latecomers receive no credit. ResyncEngine owns observation of the overlap
+flag and the global ordinary eligibility predicate.
 
 ## Component-local Live transition — settled
 

@@ -172,7 +172,9 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
    with generation retirement and no cursor advancement.
 7. Mocked notification and VSPC V2 responses with a nonempty removed chain and
    an empty added path. Assert the source-specific dispositions: a notification
-   reports `NotificationInputInvalid(MalformedVspcChange)` and requires Resync;
+   reports
+   `NotificationInputInvalid(MalformedVspcChange(RemovedChainWithoutAddedPath))`
+   and requires Resync;
    `ValidatedRpcClient` rejects a synthetic response as
    `MalformedVspcResponse(RemovedChainWithoutAddedPath)` without returning a
    normalized change, and ResyncEngine follows the shared malformed
@@ -196,6 +198,10 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
 11. BlockAdded normalization failure disables routing, enqueues no block, and
     reports `NotificationInputInvalid(MalformedBlockAdded)` without retiring
     the RPC generation.
+12. NotificationRouter applies the VSPC structural checks in their specified
+    order. Exercise the valid empty no-op and each typed nonempty-removed,
+    duplicate-member, and removed/added-intersection result; malformed input
+    is not enqueued and disables routing without retiring the RPC generation.
 
 Use injected clocks and deterministic jitter to verify the independent
 [NodeService](node-service.md#nodeservice--settled) and
@@ -287,7 +293,9 @@ must not independently produce that certification.
 Verify the [atomic VSPC transaction](storage.md#atomic-vspc-transaction--settled)
 for source continuity, every removed and added selected-parent relationship,
 the removed/added pivot, direct-chain materiality, duplicate/intersection
-rejection, typed pre-mutation `VspcSourceDiscontinuity` and structured
+rejection through typed pre-mutation `VspcMemberSetViolation`, source-specific
+lifecycle mapping of that defensive error, typed pre-mutation
+`VspcSourceDiscontinuity`, and structured
 `VspcPathDiscontinuity(VspcPathConflict)` evidence, atomic membership and
 coloring changes, merge-set members represented only by boundary identity, and
 final level-score publication.
@@ -459,7 +467,14 @@ with:
 - bounded pending order where one unready candidate does not block a later
   actionable candidate;
 - structural crossing through `added` only;
-- destination-equal discard without creating an empty normalized change;
+- a pending exact notification replay, a same-destination contradictory body,
+  and multiple distinct actionable moves from the committed source, each with
+  its typed notification fault;
+- collision detection before committed-sink filtering, while a later exact
+  replay after the first transition committed is a destination-equal obsolete
+  discard rather than a pending-duplicate fault;
+- cross-stream destination equality handled as Catchup overlap rather than a
+  notification collision;
 - absence of overlap credit for unresolved or filtered candidates;
 - missing nonretained merge-set members at the PP boundary;
 - direct nonmaterialized chain members requiring Rebuild;

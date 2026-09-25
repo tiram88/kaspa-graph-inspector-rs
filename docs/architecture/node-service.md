@@ -201,15 +201,21 @@ Disabled | Enabled | Retired
   and report `NotificationInputInvalid(MalformedBlockAdded)`; the
   [processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
   owns its disposition.
-- Before attempting the bounded VSPC send, classify a raw
-  VirtualChainChanged notification with empty `added`. When `removed` is also
-  empty, discard the valid upstream no-op: it consumes no channel capacity,
-  earns no overlap credit, changes no committed state, and requests no
-  recovery. When `removed` is nonempty, do not enqueue it; disable routing and
-  report `NotificationInputInvalid(MalformedVspcChange)` because the
-  notification violates selected-sink monotonicity. The
+- Before attempting the bounded VSPC send, validate raw
+  VirtualChainChanged notification structure in this order:
+  1. Empty `removed` and empty `added` is the valid upstream no-op. Discard it;
+     it consumes no channel capacity, earns no overlap credit, changes no
+     committed state, and requests no recovery.
+  2. Nonempty `removed` with empty `added` is
+     `RemovedChainWithoutAddedPath`.
+  3. A repeated hash within either vector is `DuplicateChainMember`.
+  4. A hash present in both vectors is `RemovedAddedIntersection`.
+
+  For cases 2 through 4, enqueue nothing, disable both streams, and report
+  `NotificationInputInvalid(MalformedVspcChange(reason))`. This ordering makes
+  the reason stable when more than one defect is present. The
   [processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
-  owns its disposition.
+  owns the typed fault's disposition.
 - Retired never routes again.
 
 The subscription state belongs to `ValidatedRpcClient` and cannot outlive its

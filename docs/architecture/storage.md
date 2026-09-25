@@ -790,11 +790,20 @@ struct VspcPathConflict {
     expected_parent: BlockHash,
     stored_parent: BlockHash,
 }
+
+enum VspcMemberSetViolation {
+    DuplicateChainMember,
+    RemovedAddedIntersection,
+}
 ```
 
 Storage requires the supplied source to equal the currently committed sink.
 Every block directly named in `removed` or `added` must be materialized; the
-vectors contain no duplicates or intersection. Storage loads each added
+vectors contain no duplicates or intersection. As a defensive transaction
+check, a violation returns the typed
+`VspcMemberSetViolation(DuplicateChainMember)` or
+`VspcMemberSetViolation(RemovedAddedIntersection)` before mutation. Storage
+does not attribute that violation to an input source. Storage loads each added
 block's merge sets internally. Before mutation it also loads the persisted
 selected-parent identity for every directly named chain member and validates:
 
