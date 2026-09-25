@@ -189,8 +189,9 @@ work. SSE stays small text cursor events.
 ## Reset and recovery-time availability — settled
 
 The existing reliable processing-to-ApiService control path carries
-conceptual `Reset`, `PublishPostSeal`, and `PublishLive` controls; no new
-recovery component is needed. The exact send points and ordering belong to
+conceptual `Reset`, `PublishPostSeal`, `PublishLive`, and `InvalidateSession`
+controls; no new recovery component is needed. The exact send points and
+ordering belong to
 [processing-lifecycle.md](processing-lifecycle.md#api-session-replacement-and-publication).
 ApiService accepts exactly one Reset for each prepared processing session.
 Common Reset effects are:
@@ -209,6 +210,16 @@ barrier.
 PostSeal and Live are reliable, exact-once, state-specific controls, but they
 are not processing barriers and have no publication-completion
 acknowledgement.
+
+`InvalidateSession` is a reliable, exact-once terminal control for a recoverably
+aborted processing session. It marks that session's published image Stale,
+stops its deltas, cancels any pending publication, and rejects later observer
+updates from the invalidated session. It creates no GraphEpoch, performs no DB
+reload, and does not arm buffering for a replacement session. The next
+prepared session still begins with its own Reset. Invalidation leaves
+historical reads available unless the invalidated session's database-rebuild
+Reset had already closed them; in that case they remain closed until a later
+PostSeal publication reopens them.
 
 An ordinary Resync Reset leaves new and in-flight historical DB reads
 available.

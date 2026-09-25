@@ -337,9 +337,14 @@ final level-score publication.
 Verify [transaction retries](storage.md#transaction-retries) with PostgreSQL
 integration fixtures. Only SQLSTATE `40001` and `40P01` retry the complete
 transaction, using the nominal `10/50/250ms` slots. Assert no pre-commit cache
-publication, no retry after an ambiguous commit, and the specified
-recovery-versus-Live disposition after exhaustion. Exercise the inclusive 50%
-through 100% jitter range.
+publication and exercise the inclusive 50% through 100% jitter range. A
+nonretryable failure with proven rollback maps to `DefiniteFailure` without
+retiring a still-valid generation; connection loss before commit maps to
+`ServiceGenerationLost(Storage)` and retires it; connection loss with unknown
+commit outcome maps to `AmbiguousCommit`, publishes no cache state, performs no
+local retry, and retires it. Exercise both actual commit and rollback behind
+that ambiguous result and require the replacement generation to derive the
+resulting database truth. Retry exhaustion leaves the generation valid.
 
 ## Recovery lifecycle and Catchup
 
@@ -440,6 +445,14 @@ together. Required cases are:
 Verify the [fault and retry policy](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
 with injected clocks and deterministic jitter:
 
+- every persistence-fault row in recovery and Live, including Fatal
+  `DefiniteFailure`, retained Resync and Rebuild obligations, DB-generation
+  retention versus retirement, complete session teardown, and the prohibition
+  on reissuing an ambiguous transaction;
+- `InvalidateSession` after recoverable failure of an already-reset recovery or
+  Live session: the image becomes Stale, later observer updates are rejected,
+  Rebuild historical reads remain closed, and the next prepared session still
+  performs its own Reset; pre-Reset and Fatal failures send no invalidation;
 - whole-attempt recovery Retry rather than in-place page/RPC retry;
 - the general delay sequence and 30-second cap;
 - no second delay while awaiting a replacement service generation;

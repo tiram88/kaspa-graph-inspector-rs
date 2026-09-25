@@ -289,11 +289,27 @@ recovery-response budget.
 A definitive not-found dependency remains `DependencyUnavailable` and requires
 Rebuild instead of being classified as malformed.
 
-Storage owns local transaction retries and ambiguous-outcome handling; see
-[storage.md](storage.md#transaction-retries). Once classified across the
-ownership boundary, `Persistence(RetryExhausted)` aborts active recovery with
-`Retry` and requests `Require(Resync)` in Live. An ambiguous commit is never
-blindly reissued.
+Storage owns local transaction retries, operation-outcome classification, and
+database-generation retirement; see
+[storage.md](storage.md#transaction-retries). Using those classifications, the
+lifecycle applies this exhaustive persistence-fault policy:
+
+| Persistence fault | Active recovery | Live |
+|---|---|---|
+| `DefiniteFailure` | `Fatal`; preserve the existing recovery obligation until shutdown | `Fatal` |
+| `RetryExhausted` | Abort the session with `Retry` and retain the strongest current recovery obligation | Abort the session with `Require(Resync)` |
+| `AmbiguousCommit` | Abort the session with `Retry` and retain the strongest current recovery obligation | Abort the session with `Require(Resync)` |
+
+`ServiceGenerationLost(Storage)` aborts active recovery with `Retry` while
+retaining its current obligation; in Live it requires Resync. Both it and
+`AmbiguousCommit` wait for StorageService replacement rather than reusing the
+retired generation, without adding the general recovery Retry delay.
+
+Every `Retry` or `Require` row performs ordinary complete session teardown; it
+never reissues the failed operation. An ambiguous Rebuild transaction or an
+ambiguity before `PpBoundarySealed` retains Rebuild. After that milestone the
+retained obligation is already Resync. A Fatal persistence fault enters service
+shutdown without first inventing a new recovery obligation.
 
 Fault ownership:
 
@@ -526,6 +542,13 @@ GraphEpoch behavior, are defined in
 owns their send points. `Reset` has a completed-effect acknowledgement;
 `PublishPostSeal` and `PublishLive` are reliable and exact-once, but processing
 does not wait for publication completion.
+
+When a recoverable fault terminates a processing session after its Reset has
+completed, send one reliable `InvalidateSession` control. Send it as soon as
+the fault is accepted and before any later session's Reset. It is unnecessary
+for a pre-Reset preparation failure or Fatal shutdown. This prevents an
+aborted session from retaining an active publication state; ApiService owns
+the control's complete effects, including historical-read availability.
 
 For ordinary Resync, perform read-only reconciliation first. A failed
 reconciliation requests Rebuild without resetting the API. After successful

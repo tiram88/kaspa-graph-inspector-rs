@@ -76,14 +76,17 @@ binding mismatch and unsupported, newer, v1, partial, or unknown schema
 states enter terminal `Rejected` and do not retry under unchanged
 configuration.
 
-A connection-level storage failure retires the validated generation and ends
-the active processing session, but does not retroactively revoke independent
-operations already in flight. Each operation reports its actual outcome:
+A connection-level storage failure retires the validated generation, but does
+not retroactively revoke independent operations already in flight. The
+[processing lifecycle](processing-lifecycle.md) owns the resulting session
+termination. Each operation reports its actual outcome:
 
 - a definitely committed transaction remains successful and authoritative;
-- a definite rollback is a failure; and
+- connection loss before commit with a proven rollback is
+  `ServiceGenerationLost(Storage)` rather than a persistence-transaction
+  fault; and
 - a connection loss with an ambiguous commit outcome remains ambiguous and is
-  never transparently retried.
+  reported as `Persistence(AmbiguousCommit)`.
 
 All persistent mutations are transactional. Cache entries become visible
 only after definite commit. No connection epoch, revocation check, cache
@@ -96,12 +99,14 @@ detected) authorize a local retry of a processing semantic transaction. Retry
 the **complete transaction** at most three times, after nominal delays `10ms`,
 `50ms`, and `250ms`, each with equal jitter from 50% through 100%.
 
-Return every other definite failure immediately. Never retry a connection
-loss during commit because its outcome is ambiguous. Exhaustion produces the
-typed `Persistence(RetryExhausted)` fault. Its recovery-versus-Live
-disposition belongs to the
-[processing lifecycle](processing-lifecycle.md). No cache state is published
-before definite commit.
+Return every other definite failure immediately. An unexpected nonretryable
+transaction failure with a proven rollback and a still-valid database
+generation is `Persistence(DefiniteFailure)`; semantic and representability
+failures keep their more specific typed errors. Never retry a connection loss
+during commit because its outcome is ambiguous. Exhaustion produces
+`Persistence(RetryExhausted)` without retiring the still-valid database
+generation. The [processing lifecycle](processing-lifecycle.md) owns every
+cross-worker disposition. No cache state is published before definite commit.
 
 ### Internal concurrency
 
@@ -281,14 +286,14 @@ claimed.
 | Condition | Storage classification |
 |---|---|
 | Database temporarily unreachable | `Unavailable`; retry connection under the service backoff policy |
-| Validated pool or advisory-lock connection fails | Retire the validated client and terminate its processing session |
+| Validated pool or advisory-lock connection fails | `ServiceGenerationLost(Storage)` under the connection-level outcome contract above |
 | Database already owned by another KGI | `Rejected(DatabaseAlreadyInUse)` |
 | Immutable `(network_id, genesis_hash)` mismatch | `Rejected(NetworkMismatch)` |
 | Schema newer than the binary | `Rejected(SchemaTooNew)` |
 | Unsupported, v1, partial, or unknown schema | `Rejected(UnsupportedSchema)` |
 | Compatible migration fails | Publish no validated client; report the typed startup storage failure |
 | Processing contents are `Inconsistent` | Keep the compatible database usable for Rebuild; never permit Resync |
-| Rebuild commit outcome is ambiguous | Retire the validated client and retain Rebuild |
+| Rebuild commit outcome is ambiguous | `Persistence(AmbiguousCommit)` under the transaction-outcome contract above |
 | Domain invariant violation inside an operation | Typed operation/session failure for the owning caller |
 
 ## Administrative reinitialization — settled
@@ -709,15 +714,13 @@ intermediate cache state.
 
 A definite transaction failure rolls back to the previous database contents,
 publishes no replacement cache state, and returns the typed database error.
-The Rebuild requirement remains outstanding.
 
 If commit acknowledgement is lost, the outcome is ambiguous. The method does
-not report success, emit a milestone, publish cache changes, or retry blindly.
-StorageService retires the current `ValidatedDbClient` generation; the
-processing session terminates while retaining Rebuild, and the next validated
-generation rederives database truth. Even if the transaction actually
-committed, the requirement remains until a later run reaches the ordinary
-`PpBoundarySealed` milestone.
+not report success, publish cache changes, or retry blindly.
+StorageService reports `Persistence(AmbiguousCommit)` and retires the current
+`ValidatedDbClient` generation so a replacement generation rederives database
+truth. The processing lifecycle owns session termination, the retained Rebuild
+obligation, and API effects.
 
 The [API Reset barrier](api.md#reset-and-recovery-time-availability--settled)
 and the [processing lifecycle](processing-lifecycle.md) own when this operation
