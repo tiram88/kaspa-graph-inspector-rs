@@ -683,6 +683,15 @@ levels, explicit rejection or temporary unavailability, and the required
 operational measurements. Saturated API work must not materially delay
 processing or produce a partial graph image.
 
+For historical request resource lifetime, stall response delivery after the
+complete database projection has been materialized and verify that no
+transaction, connection, row stream, or API DB permit remains held while
+processing obtains its reserved database capacity. Cover client disconnect,
+serialization or compression failure, and an oversized response after database
+release. Query/Reset races must retain the acknowledged Reset contract's old
+coherent result or clean 503 outcome even when database resources were released
+before response construction completed.
+
 Go KGI parity fixtures, rusty-kaspa RPC and notification fixtures, PostgreSQL
 integration tests, and browser graph tests accompany the applicable groups
 above.

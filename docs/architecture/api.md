@@ -395,6 +395,35 @@ saturation, reject or degrade API work explicitly. Do not block processing,
 truncate a response or cache image presented as complete, or silently drop a
 processing notification.
 
+Every historical database-backed HTTP request separates database work from
+response construction in this order:
+
+```text
+acquire HTTP admission
+    -> acquire API DB permit and connection
+    -> open one consistent read-only transaction
+    -> resolve the anchor and materialize the complete bounded projection
+    -> finish the transaction and release the connection and DB permit
+    -> use bounded serialization/compression capacity
+    -> deliver the response
+```
+
+Before serialization or network delivery begins, the request owns an in-memory
+projection that borrows no PostgreSQL transaction, connection, row stream,
+cursor, or API DB permit. A slow client may retain its HTTP admission and
+bounded response-memory capacity, but never database capacity. Serialization,
+compression, response-size, and client-delivery failures after that boundary
+are API-local and do not retire a database generation or request processing
+recovery. A connection-level failure during the database phase retains
+StorageService's
+[storage-generation failure classification](storage.md#storageservice-lifecycle--settled).
+
+Releasing database resources does not complete the HTTP request for purposes
+of the acknowledged Rebuild Reset. The request remains tracked until delivery
+or cancellation under the
+[Reset contract](#reset-and-recovery-time-availability--settled), and response
+construction cannot issue follow-up database reads.
+
 If all `MAX_CACHE_DEPTH = 1000` complete levels exceed the cache memory
 allowance, first drop an optional stale image when useful. Otherwise mark head
 temporarily unavailable and retry a complete reload. Never publish partial
