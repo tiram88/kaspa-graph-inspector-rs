@@ -104,12 +104,10 @@ record is constructed locally from Begin; Genesis is never received through
 the ordinary `BlockPersisted` data path. For every later block, the history
 record comes from BlockProcessor's `PersistedBlock` delivery. The anchor seed
 and later records provide the same non-null point and selected-parent shape.
-VspcProcessor consumes the certification owned by
-[`MaterializedSyncAnchor`](domain-model.md#shared-value-types--settled) for the
-seed and by BlockProcessor's
-[`PersistedBlock`](block-processing.md#committed-block-delivery) contract for
-later records. No raw block-presence or compact-ID result may create a history
-entry.
+The anchor and every `PersistedBlock` originate from a semantic
+[`Materialized`](domain-model.md#identity-and-materiality-vocabulary--settled)
+result. VspcProcessor receives later history entries only through
+BlockProcessor's `PersistedBlock` delivery.
 
 These pending structures share one bounded capacity. A single
 `HashMap<BlockHash, Vec<VspcChange>>` cannot represent multi-dependency
@@ -182,24 +180,23 @@ only when both predicates hold:
 
 ```text
 CHAIN_READY: ready.source == committed_vspc_sink
-BLOCK_READY: ready.destination is BoundaryMaterialized
+BLOCK_READY: ready.destination has a Materialized history entry
 ```
 
 `resolve_vspc_readiness()` names this processor-local resolution and sequencing
 step; it is not a storage API with an independently settled call signature.
 VspcProcessor maintains pending/history state, constructs `ReadyVspcChange`,
 and invokes the precise storage operations below. `BLOCK_READY` is established
-only by a destination history entry carrying one of the certifications linked
-above.
+only by the destination history entry described above.
 
 An actionable reorg calls
 `ValidatedDbClient::resolve_materialized_ids(removed + added)` once. The
 ordered, cache-first result preserves input positions, including repeats, and
-distinguishes absent from boundary-identity members. This batch proves ordinary
-materiality for the directly named chain members; it does not establish
-`BLOCK_READY` or certify retained-past closure. Added-only changes derive their
-source and member IDs from retained materialization history without that
-database read.
+distinguishes absent from boundary-identity members. The batch proves the
+semantic Materialized state for directly named chain members, but it does not
+supply the destination point or create the history entry required by
+`BLOCK_READY`. Added-only changes derive their source and member IDs from
+retained materialization history without that database read.
 
 Endpoint `VspcPoint` consensus order comes from `PersistedBlock` history. The
 database batch resolves member IDs; it does not derive endpoint order or load

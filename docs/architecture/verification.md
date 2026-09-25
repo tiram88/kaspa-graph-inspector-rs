@@ -267,18 +267,18 @@ and [rebuild transaction](storage.md#rebuild-transaction--settled) with:
    identities remain identity-only, and replacement caches publish only after
    definite commit. An ambiguous commit retires the DB generation without
    reporting successful Rebuild.
-11. Materiality remains derived from `blocks`; ordinary processing performs no
-    individual block/identity deletion or boundary-identity promotion; parent
-    rows have no foreign keys or cascade semantics; merge-set IDs validate
-    transactionally; and coordinate uniqueness plus `levels.size` updates are
-    enforced in the insertion transaction.
+11. In a processing-valid database, every `blocks` row represents the semantic
+    Materialized state, including retained-past closure. Ordinary processing
+    performs no individual block/identity deletion or boundary-identity
+    promotion; parent rows have no foreign keys or cascade semantics; merge-set
+    IDs validate transactionally; and coordinate uniqueness plus `levels.size`
+    updates are enforced in the insertion transaction.
 12. Verify the
     [reconciliation snapshot](storage.md#reconciliation-snapshot--settled) with
-    `Existing` including its proven `node_pp` and certified committed sink,
-    each documented `NodePpNotBoundaryMaterialized` and
-    `SinkNotBoundaryMaterialized` case, coherent Empty, inconsistent contents,
-    and operational storage failure as distinct outcomes. A retained-past
-    incomplete committed sink must not produce `MaterializedSyncAnchor`.
+    `Existing` including its Materialized `node_pp` and committed sink,
+    `NodePpNotMaterialized` for absent and identity-only node pruning points,
+    coherent Empty, missing or incoherent sink contents, other Inconsistent
+    contents, and operational storage failure as distinct outcomes.
 13. Exercise checked score conversion at zero and both domain maxima. SQL
     rejects writes outside the persisted ranges. Compatible bound contents
     with a negative score or the DAA sentinel stored as a real block score are
@@ -297,10 +297,13 @@ and ambiguous-commit outcomes around both paths; an unproven non-Genesis seal
 emits no milestone, while restart after a committed Genesis rebuild derives
 PostSeal from storage and proceeds through ordinary Resync.
 
-Verify BlockProcessor emits `PersistedBlock` only for a point certified
-`BoundaryMaterialized` after definite insert or validated dedup. An ordinary
-materialized-ID lookup, including one for a retained-past-incomplete block,
-must not independently produce that certification.
+Verify the rebuild pruning point establishes the Materialized base case and
+every successful insertion preserves the invariant from Materialized
+references or permitted boundary-identity leaves. A definite
+`materialize_block` success and `BlockPresence::Materialized` dedup each
+authorize `PersistedBlock`; a bare row observation, compact ID, absent hash, or
+boundary identity does not. No storage mutation path may create a block row
+without establishing the same invariant.
 
 Verify the [atomic VSPC transaction](storage.md#atomic-vspc-transaction--settled)
 for source continuity, every removed and added selected-parent relationship,
@@ -323,21 +326,19 @@ through 100% jitter range.
 
 Verify [Resync preparation](processing-lifecycle.md#resync-preparation) with
 fixtures that combine the normalized current pruning-point block, its
-boundary-materiality result, stored sink ID/hash/selected-parent hash/DAA score,
-and an exact no-transactions GetBlock header. Cover:
+Materialized result, stored sink ID/hash/selected-parent hash/DAA score, and an
+exact no-transactions GetBlock header. Cover:
 
-- exact current-node-PP discovery and successful boundary-materiality proof;
+- exact current-node-PP discovery and successful Materialized result;
 - successful `MaterializedSyncAnchor` construction, including a header-only
-  node block and a committed sink whose retained-past proof succeeded;
+  node block and a coherent committed Materialized sink;
 - exact RPC and DB generation propagation into both processor Begin payloads,
   including VspcProcessor initialization of its committed sink and history
   seed;
 - a definitively absent sink, incoherent stored sink, and a DAA mismatch
   requiring Rebuild;
-- an absent, identity-only, or retained-past-incomplete current node PP
-  requiring Rebuild without retiring the valid RPC generation;
-- a retained-past-incomplete committed sink requiring Rebuild without
-  constructing an anchor or retiring the valid RPC generation;
+- an absent or identity-only current node PP requiring Rebuild without
+  retiring the valid RPC generation;
 - transport or session failure without inferring Rebuild; and
 - a response carrying the wrong hash or missing required GhostDAG header data
   as `MalformedGetBlock`, retiring the exact RPC generation without inferring

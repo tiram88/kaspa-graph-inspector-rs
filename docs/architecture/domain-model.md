@@ -80,10 +80,10 @@ contains that order and must not duplicate the block hash. Explicit `hash()`,
 relationship.
 
 `MaterializedSyncAnchor` is the complete committed starting point shared by
-the recovery pump and both processors. It certifies that `point` is
-`BoundaryMaterialized` under the predicate defined below. Its non-null
-`selected_parent` is the persisted selected-parent hash. For Genesis it is
-synthetic ORIGIN, which is not an actual direct parent.
+the recovery pump and both processors. Its `point` is Materialized under the
+invariant defined below. Its non-null `selected_parent` is the persisted
+selected-parent hash. For Genesis it is synthetic ORIGIN, which is not an
+actual direct parent.
 
 `CompactId` is an incremental positive signed 64-bit internal identifier. It
 is private to storage and processing and is not a public block identity.
@@ -120,7 +120,9 @@ BoundaryIdentity
     retained pruning-point boundary, but no materialized block exists
 
 Materialized
-    persistent block data and a BlockCoordinate exist for the identity
+    complete persistent block data and a BlockCoordinate exist for the
+    identity, and every retained block in its DAG past is Materialized up to
+    permanent BoundaryIdentity leaves outside the pruning-point boundary
 ```
 
 The shared lookup result is conceptually:
@@ -136,18 +138,18 @@ enum BlockPresence {
 }
 ```
 
-An identifier row or `CompactId` alone does not prove materiality.
-`BoundaryMaterialized(block)` is the stronger predicate:
-
-> The block is materialized and its retained DAG past is fully materialized
-> according to pruning-point-boundary semantics.
+An identifier row, `CompactId`, or raw `blocks` row alone does not provide
+processing evidence of the semantic Materialized state. For ordinary block
+admission, processing may rely on a definite successful `materialize_block`
+outcome or on `BlockPresence::Materialized` returned by the run's
+processing-valid `ValidatedDbClient`. Both results carry the retained-past
+invariant as part of Materialized; there is no separate materiality state or
+certificate. Storage establishes the invariant at bootstrap and every block
+commit and preserves it for the database generation.
 
 Ordinary unresolved orphan hashes are not boundary identities. They remain
 transient processing state. A permanent `BoundaryIdentity` is never promoted
 to `Materialized`; attempting to materialize it is an invariant violation.
-`BoundaryMaterialized` is a semantic invariant rather than another
-`BlockPresence` variant. The focused storage and processing contracts own how
-the invariant is established, certified, and consumed.
 
 ## Pruning-point boundary and ORIGIN — settled
 

@@ -7,7 +7,7 @@ explain why older handoffs or implementation notes may use different terms.
 |---|---|---|
 | Complete the initial scan before subscribing, then repair only from final VSPC. | Catchup overlap and ordinary recovery. | [Processing lifecycle](../architecture/processing-lifecycle.md) |
 | Create placeholder block rows at levels 0/1 and promote them later. | Boundary identities and separate materialized blocks. | [Domain model](../architecture/domain-model.md), [storage](../architecture/storage.md) |
-| Treat any identity-row existence as block materiality. | `BlockPresence` states and the `BoundaryMaterialized` predicate. | [Domain model](../architecture/domain-model.md) |
+| Treat any identity-row existence as block materiality. | `BlockPresence` states and the retained-past invariant included in `Materialized`. | [Domain model](../architecture/domain-model.md) |
 | Prune VSPC history through `sink` using `<=`. | Strict-below-sink pruning. | [VSPC processing](../architecture/vspc-processing.md) |
 | Estimate Catchup with a large sink-anticone window, tenfold merge-set margin, or fixed X/Y page rule. | Rolling-sink proximity and retained fallbacks. | [Processing lifecycle](../architecture/processing-lifecycle.md) |
 | Allow only ResyncEngine reconciliation to request Rebuild. | Typed direct Rebuild requests. | [Processing lifecycle](../architecture/processing-lifecycle.md) |

@@ -176,18 +176,15 @@ struct PersistedBlock {
 }
 ```
 
-`PersistedBlock` is BlockProcessor's certification that `point` satisfies the
-domain model's
-[`BoundaryMaterialized`](domain-model.md#identity-and-materiality-vocabulary--settled)
-predicate; it is not merely evidence that a block row or compact ID exists.
-BlockProcessor may construct and deliver one only after a definite
-materialization commit or a dedup against the run's validated DB generation,
-with the phase's reference policy and retained-past invariant satisfied.
+`PersistedBlock` is the delivery payload BlockProcessor emits after storage
+establishes the block as
+[`Materialized`](domain-model.md#identity-and-materiality-vocabulary--settled).
+It carries the point and selected parent required by downstream consumers.
 
 Every delivered `PersistedBlock` represents a non-Genesis block and therefore
 has a mandatory selected parent. Genesis never enters the ordinary
 BlockProcessor-to-consumer `PersistedBlock` path; VspcProcessor instead
-constructs its initial history record from the certified Begin anchor. No
+constructs its initial history record from the Begin anchor. No
 VSPC `added` or `removed` member is Genesis, although a derived VSPC source may
 be Genesis.
 

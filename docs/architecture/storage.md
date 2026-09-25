@@ -124,10 +124,12 @@ Empty
     binding and db_pp_blue_score = 0, with no PP or processing data
 
 Initialized
-    a compatible schema has coherent PP, PP score, and materialized VSPC sink
+    a compatible schema has coherent PP, PP score, and materialized VSPC sink;
+    every block row satisfies the semantic Materialized invariant
 
 Inconsistent
-    schema and binding are valid, but processing contents require Rebuild
+    schema and binding are valid, but processing contents, including any
+    detected retained-past-closure violation, require Rebuild
 
 Rejected
     network identity mismatch or unsupported, newer, v1, partial, or unknown
@@ -368,8 +370,8 @@ or recovery decisions.
 
 The [domain model](domain-model.md#identity-and-materiality-vocabulary--settled)
 defines `Absent`, `BoundaryIdentity`, `Materialized`, and
-`BoundaryMaterialized`. Storage represents identity separately from
-materialized graph data:
+the retained-past invariant included in Materialized. Storage represents
+identity separately from materialized graph data:
 
 ```text
 block_identifiers: BlockHash -> CompactId
@@ -434,9 +436,14 @@ The materialization transaction validates their identities and embeds both
 endpoint coordinates. An outside-boundary parent uses the sentinel `(0,0)`.
 `levels.size` is the number of allocated slots at the level.
 
-Materiality is derived from the presence of a `blocks` row; there is no
-persistent `materialized` flag. Ordinary processing never deletes individual
-blocks or identities, and permanent boundary identities are never promoted.
+There is no persistent `materialized` flag. In a processing-valid database
+generation, a `blocks` row is the persistent representation of the semantic
+Materialized state because PP bootstrap and every later insertion establish
+retained-past closure. A row observed in unvalidated or Inconsistent contents
+cannot be relied on by processing. Processors cannot begin against
+Inconsistent contents; Rebuild atomically replaces them first. Ordinary
+processing never deletes individual blocks or identities, and permanent
+boundary identities are never promoted.
 The parent table deliberately has neither foreign keys nor cascade deletion.
 Merge-set arrays likewise have no element-level foreign keys; their IDs are
 validated transactionally. `UNIQUE(level, slot)` is the final coordinate
@@ -519,7 +526,10 @@ Cold identity batches may left-join `blocks` to obtain the materialized bit.
 Publish cache entries only after the corresponding definite commit.
 
 `block_presence` distinguishes all three shared `BlockPresence` states without
-creating an identity.
+creating an identity. During an active processing run its
+`BlockPresence::Materialized` result is an authoritative materiality result,
+not a weaker row-existence result. The run cannot invoke it against
+pre-Rebuild Inconsistent contents.
 
 `resolve_materialized_ids` takes one ordered hash batch and returns one ID per
 input position, including repeated hashes. It resolves cache hits, performs at
@@ -745,7 +755,8 @@ For every materialization, intern hashes in this order:
 Deduplicate by first occurrence within this sequence. Validate the
 database-relative conditions atomically:
 
-- boundary materiality for references under the selected policy;
+- semantic Materialized state for every retained reference under the selected
+  policy;
 - an already materialized own hash as a dedup outcome returning its ID and
   coordinate; and
 - an own hash already classified as a permanent boundary identity as an
@@ -756,6 +767,14 @@ no boundary identities. `AllowBoundaryIdentities` may intern missing
 references as permanent outside-boundary identities, but it always
 materializes the incoming block. Ordinary unresolved orphans never use the
 permissive policy merely to persist missing hashes.
+
+This establishes the invariant inductively. The rebuild pruning point is the
+base: every nonretained reference is a permanent boundary identity. For each
+later insertion, every retained reference is already Materialized and
+therefore carries its own closed retained past; any newly permitted
+`BoundaryIdentity` is an outside-boundary leaf. A successful insertion extends
+that closure to the new block. A dedup consumes the same invariant already
+preserved by the processing-valid database generation.
 
 The PP bootstrap path handles the validated Genesis ORIGIN exception
 separately. Ordinary `materialize_block` never receives Genesis.
@@ -790,8 +809,9 @@ A newly inserted block starts `Gray` and outside VSPC. Parent rows contain
 each actual materialized coordinate or the outside-boundary sentinel `(0,0)`.
 Normal block materialization leaves the level DAA score at its sentinel.
 
-On successful insert or dedup, return `MaterializeBlockOutcome`. Processing
-owns publication of any resulting `PersistedBlock` and the PP-boundary phase
+On definite successful insert or dedup, return `MaterializeBlockOutcome`.
+Either outcome is an authoritative materiality result. Processing owns
+publication of any resulting `PersistedBlock` and the PP-boundary phase
 transition.
 
 ## Atomic VSPC transaction — settled
@@ -873,10 +893,7 @@ level-score changes.
 ```rust
 enum ReconciliationState {
     Empty,
-    NodePpNotBoundaryMaterialized {
-        hash: BlockHash,
-    },
-    SinkNotBoundaryMaterialized {
+    NodePpNotMaterialized {
         hash: BlockHash,
     },
     Existing(ReconciliationSnapshot),
@@ -915,24 +932,20 @@ database PP exclusively at `(level=1, slot=0)`, read
 `NodeMetadata.db_pp_blue_score`, derive the committed sink as the maximum-ID
 materialized VSPC block, resolve its selected-parent hash, and verify that
 the PP and sink are mutually coherent. For an initialized database it also
-resolves the supplied current node PP and proves both
-`BoundaryMaterialized(current_node_pp)` and
-`BoundaryMaterialized(committed_vspc_sink)` in that same snapshot. Each block
-must be materialized and its retained parent and merge-set references must
-close through materialized blocks up to the valid PP boundary, where
-permanent `BoundaryIdentity` references are permitted.
+resolves the supplied current node PP as Materialized in that same snapshot.
+The committed sink is Materialized by the database-generation invariant; the
+snapshot supplies its stored point and selected parent.
 
 Return `Empty` only for the coherent network-bound Empty state. Inconsistent
 combinations return a typed `StorageError` rather than an incomplete snapshot.
-Return `NodePpNotBoundaryMaterialized` when the supplied hash
-is absent, identity-only, or fails the retained-past proof; this is
-reconciliation evidence rather than an operational storage failure. Return
-`SinkNotBoundaryMaterialized` when the derived committed sink fails the same
-proof. `Existing` includes the proven materialized node PP as `node_pp` and a
-committed sink certified for construction of `MaterializedSyncAnchor`. The
-result contains no node-derived blue work or blue score. ResyncEngine uses the
-run's exact validated RPC generation to enrich and validate the stored sink
-before constructing the anchor.
+Return `NodePpNotMaterialized` when the supplied hash is absent or
+identity-only; this is reconciliation evidence rather than an operational
+storage failure. A missing or incoherent committed sink is Inconsistent
+storage content, not a weaker materiality state. `Existing` includes the
+Materialized node PP as `node_pp` and the committed sink needed to construct
+`MaterializedSyncAnchor`. The result contains no node-derived blue work or
+blue score. ResyncEngine uses the run's exact validated RPC generation to
+enrich and validate the stored sink before constructing the anchor.
 
 ## Historical read contracts — settled
 
