@@ -191,8 +191,15 @@ do.
   resolver-confirmed unavailable dependency each require Rebuild directly:
   the DB can no longer be trusted against node state. RPC connection failure
   is not proof of dependency unavailability.
-- A block whose own hash is already a permanent boundary identity reports
-  `MaterialityViolation` and requires Rebuild directly.
+- `MaterialityViolation` from an incoming block hash already classified as a
+  permanent boundary identity, or from an identity-only reference rejected by
+  `RequireMaterialized`, requires Rebuild directly. Boundary leaves accepted
+  under `AllowBoundaryIdentities` produce no such fault.
+- A strict pre-Catchup materialization attempt with absent references only
+  reports `ReconciliationFailed` and `Require(Resync)`. The same result during
+  Catchup or Live produces no immediate lifecycle fault; its local handling
+  belongs to the
+  [BlockProcessor contract](block-processing.md#admission-and-materialization).
 - `ScoreOutOfRange(DaaScore)` and `ScoreOutOfRange(BlueScore)` identify node
   values outside KGI's shared representable ranges.
   `ScoreOutOfRange(BoundarySealThreshold)` identifies a boundary-threshold

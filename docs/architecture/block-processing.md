@@ -117,14 +117,27 @@ Reference validation and complete missing-reference reporting occur inside the
 atomic `ValidatedDbClient::materialize_block(block, policy)` transaction. This
 avoids splitting readiness from the commit that relies on it.
 
+Handle its typed semantic failures in this precedence order:
+
+1. `IncomingBoundaryIdentity` reports `MaterialityViolation`.
+2. `NonMaterializedReferences` with any `identity_only` member reports the
+   same violation. Do not admit the block to OrphanManager or attempt to
+   resolve a permanent boundary identity; any accompanying `missing` hashes
+   remain diagnostic context only.
+3. `NonMaterializedReferences` containing only `missing` hashes under strict
+   processing before Catchup reports `ReconciliationFailed`.
+4. The same missing-only result during Catchup or Live admits the block to
+   OrphanManager with the complete missing set.
+
 PreSeal boundary absences are accepted only through
-`AllowBoundaryIdentities`. Strict pre-Catchup missing material requires
-Resync. Catchup and Live admit blocks with unresolved ordinary dependencies
-to OrphanManager instead of persisting partial state. Transaction validation,
-hash interning, coordinate allocation, and commit behavior belong to the
+`AllowBoundaryIdentities`; they do not produce
+`NonMaterializedReferences`. An `IncomingBoundaryIdentity` remains a violation
+under either policy.
+Transaction validation, hash interning, coordinate allocation, result shapes,
+and commit behavior belong to the
 [block materialization transaction](storage.md#block-materialization-transaction--settled).
 The [processing lifecycle](processing-lifecycle.md#supervisor-and-recovery-intent--settled)
-owns the Rebuild disposition for the incoming-boundary-identity violation.
+owns the cross-worker dispositions of both reported faults.
 
 ### Catchup filtering and overlap
 

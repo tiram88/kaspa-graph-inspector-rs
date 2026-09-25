@@ -505,8 +505,8 @@ struct CachedIdentity {
 enum ResolveMaterializedIdsError {
     Storage(StorageError),
     NonMaterialized {
-        missing: Box<[BlockHash]>,
-        identity_only: Box<[BlockHash]>,
+        missing: Arc<[BlockHash]>,
+        identity_only: Arc<[BlockHash]>,
     },
 }
 
@@ -690,11 +690,12 @@ attempt publishes none of these cache changes.
 ### Boundary state after commit
 
 No database boolean records PP-boundary sealing. For a non-Genesis pruning
-point, the transaction establishes the boundary but BlockProcessor begins in
-PreSeal and uses the derived seal threshold owned by the
-[block-processing contract](block-processing.md#pp-boundary-phase-behavior--settled).
-For Genesis, the committed boundary is intrinsically sealed and BlockProcessor
-begins directly in PostSeal.
+point, the transaction establishes the boundary but records no seal threshold
+or processing phase. ResyncEngine owns
+[threshold construction](processing-lifecycle.md#boundary-seal-threshold-construction),
+and the [BlockProcessor contract](block-processing.md#pp-boundary-phase-behavior--settled)
+owns local phase behavior. The Genesis transaction likewise stores no phase or
+threshold; its committed boundary is intrinsically sealed.
 
 Storage does not emit `PpBoundarySealed`. A successful rebuild commit alone
 does not consume Supervisor's retained Rebuild requirement; the processing
@@ -736,12 +737,23 @@ struct MaterializeBlockOutcome {
     inserted: bool,
 }
 
+enum MaterializeBlockError {
+    Storage(StorageError),
+    IncomingBoundaryIdentity {
+        hash: BlockHash,
+    },
+    NonMaterializedReferences {
+        missing: Arc<[BlockHash]>,
+        identity_only: Arc<[BlockHash]>,
+    },
+}
+
 impl ValidatedDbClient {
     async fn materialize_block(
         &self,
         block: ValidatedNodeBlock,
         policy: ReferencePolicy,
-    ) -> Result<MaterializeBlockOutcome, StorageError>;
+    ) -> Result<MaterializeBlockOutcome, MaterializeBlockError>;
 }
 ```
 
@@ -771,10 +783,20 @@ database-relative conditions atomically:
   explicit typed materiality violation.
 
 `RequireMaterialized` requires every reference to be materialized and creates
-no boundary identities. `AllowBoundaryIdentities` may intern missing
-references as permanent outside-boundary identities, but it always
-materializes the incoming block. Ordinary unresolved orphans never use the
-permissive policy merely to persist missing hashes.
+no boundary identities. Before mutation, it classifies every nonmaterialized
+reference and returns one `NonMaterializedReferences` result containing all
+absent hashes in `missing` and all permanent boundary identities in
+`identity_only`. The arrays are disjoint, contain each hash once, and preserve
+first occurrence in the universal interning order above. The transaction rolls
+back and publishes no cache state.
+
+An own hash already represented by a permanent boundary identity takes
+precedence and returns `IncomingBoundaryIdentity`; it is not included among
+reference results. `AllowBoundaryIdentities` instead accepts existing boundary
+references and may intern absent references as permanent outside-boundary
+identities. When the own hash is admissible, it materializes the incoming block
+rather than leaving it partial; it does not return
+`NonMaterializedReferences`.
 
 This establishes the invariant inductively. The rebuild pruning point is the
 base: every nonretained reference is a permanent boundary identity. For each

@@ -316,7 +316,13 @@ references or permitted boundary-identity leaves. A definite
 `materialize_block` success and `BlockPresence::Materialized` dedup each
 authorize `PersistedBlock`; a bare row observation, compact ID, absent hash, or
 boundary identity does not. No storage mutation path may create a block row
-without establishing the same invariant.
+without establishing the same invariant. Under `RequireMaterialized`, verify
+one pre-mutation `NonMaterializedReferences` result reports complete, disjoint,
+first-occurrence-ordered `missing` and `identity_only` arrays and rolls back all
+writes and cache publication. Verify `IncomingBoundaryIdentity` precedence for
+the block's own hash. Under `AllowBoundaryIdentities`, existing identity-only
+references and newly absent references succeed as boundary leaves and do not
+produce that strict-policy result.
 
 Verify the [atomic VSPC transaction](storage.md#atomic-vspc-transaction--settled)
 for source continuity, every removed and added selected-parent relationship,
@@ -486,8 +492,15 @@ Verify [block admission](block-processing.md#admission-and-materialization),
 6. A malformed resolver full-block response retires the exact RPC generation:
    during Catchup it follows the shared malformed recovery-input budget, while
    during Live it requires Resync without consuming that budget.
-7. An incoming hash already classified as a permanent boundary identity
-   reports `MaterialityViolation` and requires Rebuild.
+7. An incoming hash already classified as a permanent boundary identity, or a
+   strict materialization result containing any identity-only reference,
+   reports `MaterialityViolation` and requires Rebuild without orphan or
+   resolver admission. When the same result also contains absent hashes, the
+   identity-only disposition takes precedence.
+8. A strict missing-only result before Catchup reports
+   `ReconciliationFailed` and `Require(Resync)`. During Catchup and Live, the
+   complete missing set enters ordinary orphan/dependency resolution without a
+   partial database write.
 
 ## VSPC processing
 
