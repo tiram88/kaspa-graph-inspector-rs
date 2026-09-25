@@ -368,6 +368,12 @@ calculation, or other processing input. An excessive score returns the typed
 malformed RPC shape and is never remapped to a source-specific malformed-input
 kind.
 
+For the exact Genesis hash of the validated RPC generation, the normalizer
+also enforces the domain-owned zero-blue-score invariant. A nonzero value is an
+intrinsic block-validation failure rather than a range failure and therefore
+retains the obtaining operation's source-specific malformed-input
+classification.
+
 The normalizer copies the domain-owned informational `Timestamp` unchanged and
 performs no timestamp range validation. Storage owns its lossless `BIGINT`
 encoding.

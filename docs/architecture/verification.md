@@ -137,7 +137,8 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
    `ValidatedNodeBlock` and rejects missing header or verbose data, inconsistent
    hashes, duplicate direct parents, contradictory self-reference, and an
    ordinary selected parent absent from the direct parents. Cover the exact
-   validated-Genesis ORIGIN exception separately.
+   validated-Genesis ORIGIN exception and its mandatory zero blue score
+   separately.
 2. GetBlocks fixtures cover the inclusive low hash, unequal hash/block vector
    lengths, hash/block disagreement, duplicates, a valid response that
    normalizes to zero blocks, and a page with one invalid full-block member.
@@ -198,7 +199,11 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
    [current pruning-point block contract](node-service.md#current-pruning-point-block)
    with success, the Genesis exception, non-Genesis parent validation, every
    listed malformed response condition, exact-generation retirement, and
-   transport or generation loss without inferring a database mismatch.
+   transport or generation loss without inferring a database mismatch. An
+   exact-Genesis response with blue score one is
+   `RecoveryInputInvalid(MalformedPruningPointResponse)`, retires the producing
+   RPC generation, consumes the shared malformed-input budget, and produces no
+   boundary threshold, `PreparedSync`, API Reset, or storage mutation.
 10. Individual full-block GetBlock validates the requested hash and every
     `ValidatedNodeBlock` invariant. Malformed output retires the exact RPC
     generation; definitive not-found and transport failure retain their
@@ -376,7 +381,9 @@ representable sum above that maximum. Both failures report
 `ScoreOutOfRange(BoundarySealThreshold)` without wrapping or saturation and
 produce no `PreparedSync` or processor Begin. Resync uses the reconciled DB PP
 hash and score. Rebuild uses the normalized node PP hash and score and performs
-this check before API Reset or database replacement.
+this check before API Reset or database replacement. The Genesis branch returns
+the constant zero from an input whose owning source has already established the
+shared Genesis invariant.
 
 Verify Rebuild obtains one normalized current pruning-point block, completes
 the API Reset barrier, and passes that same `ValidatedNodeBlock` to

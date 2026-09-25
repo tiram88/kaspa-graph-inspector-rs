@@ -429,11 +429,17 @@ Its complete behavior is:
 
 ```text
 boundary_hash == genesis_hash:
-    boundary_blue_score
+    0
 
 otherwise:
     checked(boundary_blue_score + anticone_finalization_depth)
 ```
+
+The Genesis branch consumes the zero-blue-score invariant already established
+by either NodeService's normalized block or StorageService's processing-valid
+database snapshot; it does not accept an arbitrary Genesis score. A malformed
+node Genesis is rejected before this function and therefore before API Reset
+or database replacement.
 
 The result must be at most the shared `MAX_BLUE_SCORE`. `Overflow` or
 `AboveMaximum` reports `ScoreOutOfRange(BoundarySealThreshold)` with Fatal
