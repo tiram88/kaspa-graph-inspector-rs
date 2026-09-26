@@ -611,6 +611,14 @@ cached levels, external parent-edge endpoints and level sizes, actual parent
 presence independent of visible edges, and one Reset-driven replacement
 GraphEpoch per prepared processing session.
 
+For below-range block updates, verify that every delivered `BlockCommitted` is
+consumed, a referenced external level size grows monotonically from the
+committed coordinate, and the resulting endpoint change is published as one
+atomic revision. The update must neither expand `HeadGraphCoverage` nor restore
+the below-range block or level as HGC content. An update for a level with no
+retained crossing-edge endpoint produces no visible revision, and unreferenced
+external endpoint metadata can be discarded.
+
 Verify [DAA navigation and graph windows](api.md#daa-navigation-and-graph-windows--settled)
 for floor selection and tie break, the sentinel result, a reorg-created
 VSPC-empty level, atomic level-score publication, and navigation plus window

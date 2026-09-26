@@ -65,11 +65,23 @@ Genesis's persisted selected-parent identity, but it is never inserted into
 `direct_parents` and never becomes a public graph edge endpoint.
 
 The payload therefore carries direct-parent coordinates and, for non-Genesis
-blocks, the selected-parent coordinate without duplication. Updates for blocks
-outside current HGC still need examination: a new block can increase
-`levels.size` at an external parent endpoint used by an edge crossing the cache
-boundary. The size of an external level may be seeded by an incoming child's
-parent data and then updated monotonically when later blocks occupy it.
+blocks, the selected-parent coordinate without duplication. ApiService consumes
+every successfully delivered `BlockCommitted`, including updates for blocks
+below current HGC coverage. A block within HGC follows normal insertion
+handling. A block below `retain_from_level` does not reintroduce its block or
+level into HGC and does not extend `HeadGraphCoverage`. Its coordinate supplies
+the committed level-size candidate `slot + 1`. If that level remains cached as
+an external endpoint for a crossing edge, update its cached size monotonically:
+
+```text
+cached_external_level_size = max(cached_external_level_size, slot + 1)
+```
+
+An external level can first be seeded from an incoming child's parent data. A
+later below-range update publishes an atomic graph revision only when it changes
+retained endpoint state. An update for a level with no retained crossing-edge
+endpoint has no visible HGC effect. Once no retained edge references an external
+level, HGC may discard that endpoint metadata.
 
 ApiService applies VSPC source/destination continuity:
 
