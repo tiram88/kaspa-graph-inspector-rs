@@ -689,6 +689,10 @@ expose or consult persisted `NodeMetadata.genesis_hash`.
 Browser graph tests cover the [Web contract](web.md): update acquisition,
 fixed-view freeze and follow-live behavior, stable block identity, direct
 parent rendering, and Genesis recognition from zero actual direct parents.
+For distance-adaptive fixed views, verify no added throttling while the head is
+visible and at distances through 10, then verify that distance 11 enters the
+configured increasing-delay policy without breaking contiguous delta catch-up
+or snapshot fallback after delta retention expires.
 
 ## Resource isolation and performance
 
