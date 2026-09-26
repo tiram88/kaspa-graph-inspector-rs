@@ -257,6 +257,34 @@ must revalidate. SSE has no ETag. Historical DB windows have **no ETag in
 v2**, because computing an authoritative validator would itself require DB
 work. SSE stays small text cursor events.
 
+ApiService also maintains bounded server-side reuse of encoded head responses.
+This is distinct from HGC, which owns graph state. It caches immutable encoded
+bodies for an HGC-backed head snapshot at one exact revision and effective
+window, and for a delta over one exact `(epoch,from,to)` interval. Concurrent
+requests for the same absent variant are single-flight: one task constructs,
+serializes, and compresses the response, and the other requests share the
+resulting immutable bytes.
+
+A snapshot variant is identified by GraphEpoch, revision, publication state,
+effective window, negotiated response format, `representation_version`, and
+content encoding. A delta variant is identified by GraphEpoch, its actual
+`from` and `to` cursors, negotiated response format,
+`representation_version`, and content encoding. A "to current" request first
+captures an exact target cursor before it can join shared construction or use
+an encoded entry. If the bounded-delta rule returns a complete prefix, the
+actual returned interval identifies that entry.
+
+An encoded-cache miss or eviction affects performance only: reconstruct the
+response from HGC or the retained delta journal under the existing API
+bulkheads. Inability to retain a new encoded entry does not reject an otherwise
+serviceable response; existing request, response-memory, and encoding admission
+limits may still reject work before construction. Never reuse bytes across
+distinct variants. Cache pressure cannot affect HGC correctness or processing.
+Historical database-backed windows remain uncached in v2, and SSE remains an
+uncached cursor notification stream. Exact cache capacity, eviction policy,
+implementation, and graph wire format remain deferred in the
+[decision register](../decisions/deferred.md).
+
 ## Reset and recovery-time availability — settled
 
 The existing reliable processing-to-ApiService control path carries
@@ -446,7 +474,8 @@ V2 exposes these operational measurements:
 
 - request count, latency, and response bytes by endpoint;
 - active and rejected SSE clients;
-- cache hits, misses, and evictions;
+- encoded-response cache hits, misses, evictions, and coalesced identical
+  requests;
 - database permit and query time;
 - delta-journal resets and slow-client disconnects; and
 - BlockProcessor and VspcProcessor commit latency.

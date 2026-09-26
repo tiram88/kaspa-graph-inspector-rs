@@ -8,9 +8,10 @@ become durable project constraints.
 2. PostgreSQL Rust client, migration framework, and concrete SQL types.
 3. Exact capacities for processor channels, orphan and VSPC pending memory,
    caches, DependencyResolver and RPC concurrency, delta history, and HTTP
-   work. Local RPC scheduling and batching remain implementation choices only
-   where the focused architecture does not fix request boundaries or batch
-   semantics. Moka is the current cache-library candidate.
+   work, plus cache eviction policies and concrete implementations. Local RPC
+   scheduling and batching remain implementation choices only where the
+   focused architecture does not fix request boundaries or batch semantics.
+   Moka is the current cache-library candidate.
 4. Orphan occupancy threshold within the settled range of approximately one
    quarter through one third.
 5. Detailed Tokio fairness, drain, and concrete storage synchronization

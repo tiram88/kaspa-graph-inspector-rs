@@ -650,6 +650,17 @@ block, VSPC, lifecycle-state, or coverage revision is split. A first atomic
 revision that cannot fit requires a fresh snapshot rather than a partial
 delta.
 
+For encoded head-response reuse, issue concurrent identical snapshot requests
+at one cursor and effective window and verify that they share one construction,
+serialization, and compression result. Do the same for an exact delta
+interval. Requests differing in epoch, revision or interval, publication
+state, effective window, response format, `representation_version`, or content
+encoding must not share encoded bytes. A "to current" request must capture an
+exact target before reuse; a bounded complete-prefix response is cached by its
+actual returned interval. Eviction must reconstruct an equivalent response
+from HGC or retained deltas, historical DB windows must bypass this cache, and
+cache pressure must not delay or fault processing.
+
 Coverage cases require snapshots and deltas to carry their target revision's
 complete HGC boundary independently of the response's effective window. Verify
 the inclusive coverage invariant and monotonicity of both bounds within an
