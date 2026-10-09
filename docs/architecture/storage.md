@@ -789,6 +789,9 @@ sequences for reference classification, coordinate allocation, parent-row
 insertion, persisted merge-set arrays, and `BlockCommitted`; Storage neither
 retains the raw node sequences nor performs a second relationship-vector
 canonicalization. The same hash may remain in multiple vectors.
+The shared-value contract also guarantees that the incoming block's own hash
+is absent from every relationship vector; Storage relies on that guarantee and
+does not perform another own-reference check.
 
 There is no persistent `materialized` flag. In a processing-valid database
 generation, a `blocks` row is the persistent representation of the semantic
@@ -1185,7 +1188,10 @@ For every materialization, intern hashes in this order:
 4. selected-parent hash; and
 5. the block's own hash.
 
-Deduplicate by first occurrence within this sequence. Validate the
+Deduplicate reference hashes by first occurrence through the first four groups,
+then append the block's own hash unconditionally. The
+[`ValidatedNodeBlock`](domain-model.md#shared-value-types--settled) contract
+guarantees that it did not occur among those references. Validate the
 database-relative conditions atomically:
 
 - semantic Materialized state for every retained reference under the selected

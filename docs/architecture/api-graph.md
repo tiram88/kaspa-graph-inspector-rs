@@ -217,7 +217,7 @@ local sequence. Consequently one `EdgeId` represents the complete occurrence
 of one child-parent relation. `blue_merge_set` and `red_merge_set` are likewise
 independently non-repeating and first-occurrence ordered. A hash may occur in
 both colors; the settled blue-then-red VSPC application order determines its
-final color.
+final color. `GraphBlock.hash` is absent from all three relationship vectors.
 
 A `GraphView` has no clock origin,
 liveness, database, or publication status. A view constructed from a database

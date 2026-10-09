@@ -95,8 +95,8 @@ non-repeating sequences ordered by the first occurrence of each hash in their
 respective node-provided vectors. Raw repeated positions are accepted
 normalization input but are not retained in `ValidatedNodeBlock`. A hash may
 still occur in more than one vector, including in both merge-set colors.
-Neither parents nor merge sets prove absence of self-reference, cross-vector
-overlap, or graph validity. The
+The block's own `hash` is absent from all three vectors. Parents and merge sets
+do not otherwise prove absence of cross-vector overlap or graph validity. The
 [NodeService normalizer](node-service.md#rpc-normalization) owns construction of
 this canonical shared value.
 
@@ -112,7 +112,7 @@ that an ordinary selected parent can be encoded by index. It also proves
 uniqueness within each relationship vector. Under the
 [node trust boundary](overview.md#node-trust-boundary--settled), it does not
 prove consensus correctness, disjointness between relationship vectors,
-absence of self-reference, or acyclicity, and it makes no claim that any
+acyclicity beyond exclusion of direct own-hash references, or that any
 referenced hash is materialized in the current database.
 
 `ValidatedRecoveryHeader` is the normalized header-only value used by Resync

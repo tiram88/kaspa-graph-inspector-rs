@@ -611,17 +611,21 @@ operation's source-specific malformed-input result. The normalizer constructs
 hash in node order and discarding later occurrences. It applies the same
 first-occurrence rule independently to `merge_set_blues_hashes` and
 `merge_set_reds_hashes`. The selected-parent hash must occur in the canonical
-direct-parent sequence.
+direct-parent sequence. If the block's authoritative header hash occurs in any
+of the three raw relationship vectors, common normalization fails rather than
+retaining or silently removing that occurrence.
 
 The cached header hash is authoritative block identity and is never
 recomputed. Repeated raw parent or merge-set positions are accepted
 normalization input rather than malformed evidence. The normalizer does not
-reject parent or merge-set self-reference, require the relationship vectors to
-be disjoint, or compare redundant reported hashes. In particular, a hash found
-in both merge-set colors remains once in each canonical vector. Canonicalizing
-each vector at this boundary prevents downstream components from retaining or
-independently normalizing repeated observations that have no distinct
-relationship meaning while preserving cross-vector semantics.
+require the relationship vectors to be disjoint or compare redundant reported
+hashes. In particular, a hash other than the block's own hash found in both
+merge-set colors remains once in each canonical vector. Own-hash exclusion is
+the minimum structural condition that prevents Storage from treating the
+incoming block as one of its own references. Canonicalizing each vector at this
+boundary prevents downstream components from retaining or independently
+normalizing repeated observations that have no distinct relationship meaning
+while preserving cross-vector semantics.
 
 For the exact Genesis hash of the validated RPC generation, the normalizer
 does not require verbose data. It copies the header hash, timestamp, DAA score,

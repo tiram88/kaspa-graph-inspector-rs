@@ -161,9 +161,10 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
    ignores every named unused RPC field. Supply repeated positions in the
    level-zero parents and in each merge-set color; each resulting vector
    contains every hash once at its first occurrence. Include one hash in both
-   merge-set colors and self-references in the parent and merge-set input;
-   cross-vector overlap and self-reference remain accepted while within-vector
-   duplicates do not remain.
+   merge-set colors and verify that cross-vector overlap remains accepted.
+   Separately place the block's own authoritative hash in each of the three
+   relationship vectors and verify common normalization rejects every case;
+   no source operation may receive a self-referential `ValidatedNodeBlock`.
    Separately, cover exact-Genesis construction without verbose data: ORIGIN,
    empty parent and merge-set vectors, and blue score zero are synthesized
    while timestamp, representable DAA score, and blue work come from the
@@ -484,7 +485,9 @@ selected-parent index in that sequence, and produces no repeated coordinate or
 level contribution. Supply canonical blue and red merge-set vectors with a
 cross-color overlap and verify Storage preserves both ordered arrays without
 another normalization step. Rebuild consumes the same canonical shared value.
-Cover committed initial color and VSPC membership.
+Verify materialization relies on the shared own-hash exclusion, deduplicates
+only the reference prefix of its interning order, and appends the incoming
+block hash directly. Cover committed initial color and VSPC membership.
 Inserted outcomes and their
 BlockProcessor offers preserve increasing IDs while permitting allocation
 gaps; `AlreadyMaterialized` returns no graph-update payload.
