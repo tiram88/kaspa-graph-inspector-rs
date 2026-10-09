@@ -841,8 +841,16 @@ and validation when constructing a `MaterializedSyncAnchor`.
 
 ## Caches and identity resolution — settled
 
-The architecture fixes cache contents and publication rules rather than the
-cache library.
+Every processing-generation cache owned by `ValidatedDbClient` uses a separate
+`moka::sync::Cache` instance. Moka is the settled implementation for this
+storage cache layer: it provides concurrent access and bounded eviction without
+an outer mutex serializing all cache operations. Separate instances preserve
+independent value domains and capacity policies for identity, coordinate, and
+merge-set entries. A replacement processing generation constructs fresh empty
+instances rather than sharing or invalidating its predecessor's caches.
+
+This requirement does not apply to API publication caches. Their response
+reuse and single-flight behavior remain owned by the API architecture.
 Exact cache capacities remain deferred in the
 [decision register](../decisions/deferred.md).
 

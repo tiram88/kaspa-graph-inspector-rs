@@ -433,6 +433,11 @@ and [rebuild transaction](storage.md#rebuild-transaction--settled) with:
     `i64::MAX`, `i64::MAX + 1`, and `u64::MAX` through the signed `BIGINT`
     bit-pattern encoding; upper-half negative storage values are not
     inconsistent contents.
+14. Verify the storage-owned
+    [processing-cache requirement](storage.md#caches-and-identity-resolution--settled):
+    the identity, coordinate, and merge-set value domains use separate Moka
+    caches, and a replacement processing generation starts with empty caches
+    that cannot observe its predecessor's entries.
 
 Verify the [block materialization transaction](storage.md#block-materialization-transaction--settled)
 and [PP seal behavior](block-processing.md#pp-boundary-phase-behavior--settled)
