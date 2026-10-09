@@ -156,10 +156,14 @@ Verify the [NodeService contract](node-service.md#nodeservice--settled) and
 1. Common full-block normalization produces the flattened
    `ValidatedNodeBlock` from the exact consumed header and verbose fields. An
    ordinary block requires verbose data and selected-parent membership, uses
-   the trusted cached header hash and header blue score, preserves parent and
-   merge-set order, and ignores every named unused RPC field. Accept duplicate
-   parents or merge-set members and direct or merge-set self-reference;
-   repeated positions remain present in `ValidatedNodeBlock`.
+   the trusted cached header hash and header blue score, preserves canonical
+   first-occurrence order independently in each relationship vector, and
+   ignores every named unused RPC field. Supply repeated positions in the
+   level-zero parents and in each merge-set color; each resulting vector
+   contains every hash once at its first occurrence. Include one hash in both
+   merge-set colors and self-references in the parent and merge-set input;
+   cross-vector overlap and self-reference remain accepted while within-vector
+   duplicates do not remain.
    Separately, cover exact-Genesis construction without verbose data: ORIGIN,
    empty parent and merge-set vectors, and blue score zero are synthesized
    while timestamp, representable DAA score, and blue work come from the
@@ -474,11 +478,13 @@ outside-boundary parent. Its non-repeating `level_snapshots` must contain the
 complete resulting block level and every distinct materialized parent level,
 preserve an existing level's DAA score while its size changes, translate the
 no-VSPC sentinel to `None`, and exclude outside-boundary parents. Supply a
-validated parent sequence in which the selected parent and another parent each
-repeat. Verify first-occurrence canonicalization, one row and one
-`ParentCommitted` per relation, the selected-parent index in the canonical
-sequence, and no repeated coordinate or level contribution. Rebuild applies
-the same canonicalization. Cover committed initial color and VSPC membership.
+canonical validated parent sequence and verify Storage preserves its order,
+creates one row and one `ParentCommitted` per relation, computes the
+selected-parent index in that sequence, and produces no repeated coordinate or
+level contribution. Supply canonical blue and red merge-set vectors with a
+cross-color overlap and verify Storage preserves both ordered arrays without
+another normalization step. Rebuild consumes the same canonical shared value.
+Cover committed initial color and VSPC membership.
 Inserted outcomes and their
 BlockProcessor offers preserve increasing IDs while permitting allocation
 gaps; `AlreadyMaterialized` returns no graph-update payload.

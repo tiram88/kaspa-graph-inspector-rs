@@ -782,14 +782,13 @@ endpoint coordinates. An outside-boundary parent uses the sentinel `(0,0)`.
 `levels.size` is the number of allocated slots at the level.
 
 Storage represents direct parents as child-parent relations, so one child has
-at most one relation to a given parent. Whenever rebuild or ordinary
-materialization consumes a `ValidatedNodeBlock`, it derives the canonical
-direct-parent sequence by retaining the first occurrence of each hash in node
-order. A repeated occurrence is not rejected and creates no additional parent
-row, `ParentCommitted` entry, or level snapshot. This canonical sequence drives
-reference classification, coordinate allocation, parent-row insertion, and
-`BlockCommitted`; merge-set arrays remain governed by their separate ordered
-representation.
+at most one relation to a given parent. The shared `ValidatedNodeBlock` already
+supplies canonical non-repeating direct-parent, blue-merge-set, and
+red-merge-set sequences. Rebuild and ordinary materialization preserve those
+sequences for reference classification, coordinate allocation, parent-row
+insertion, persisted merge-set arrays, and `BlockCommitted`; Storage neither
+retains the raw node sequences nor performs a second relationship-vector
+canonicalization. The same hash may remain in multiple vectors.
 
 There is no persistent `materialized` flag. In a processing-valid database
 generation, a `blocks` row is the persistent representation of the semantic
@@ -973,7 +972,7 @@ One database transaction performs the complete replacement:
    ```
 
    Its block row stores timestamp, DAA score, the non-null selected-parent ID,
-   and the ordered blue and red merge-set IDs.
+   and the canonical ordered blue and red merge-set IDs.
 6. Insert each canonical direct-parent relation once using the parent's
    interned ID and the outside-boundary coordinate sentinel `(0,0)`. The child
    coordinate is the pruning point's `(1,0)`.
@@ -1152,23 +1151,23 @@ impl ValidatedDbClient {
 
 The shared [validated node block](domain-model.md#shared-value-types--settled)
 is hash/consensus-level input and contains no DB ID, level, or slot. Storage
-persists its hash, selected parent, canonical direct-parent relations, merge
-sets, timestamp, and DAA score; blue score and blue work remain available to
-processing but are not duplicated in the block row. Storage owns transactional
-ID resolution, coordinate allocation, initial color, persistence, and
-construction of the `BlockCommitted` value for a new insertion. Its `id` is the
-inserted block's committed `CompactId`.
+persists its hash, selected parent, canonical direct-parent relations,
+canonical merge sets, timestamp, and DAA score; blue score and blue work remain
+available to processing but are not duplicated in the block row. Storage owns
+transactional ID resolution, coordinate allocation, initial color,
+persistence, and construction of the `BlockCommitted` value for a new
+insertion. Its `id` is the inserted block's committed `CompactId`.
 
 The parent payload contains the canonical direct-parent sequence only. For
 every non-Genesis block, `selected_parent_index` is `Some(index)`, the index is
 representable as `u32` and in bounds for `direct_parents`, and that entry is the
-block's selected parent. First-occurrence canonicalization retains the first
-matching selected-parent position and removes any later occurrence. Its
-coordinate can be `None` at the outside-PP boundary. Genesis has an empty
-`direct_parents` payload and `selected_parent_index = None`. Synthetic ORIGIN
-is Genesis's persisted selected-parent identity, but it is never inserted into
-`direct_parents` or emitted as a graph parent. The payload therefore identifies
-the selected-parent coordinate without duplicating its hash.
+block's selected parent. The index addresses the shared value's canonical
+first-occurrence position. Its coordinate can be `None` at the outside-PP
+boundary. Genesis has an empty `direct_parents` payload and
+`selected_parent_index = None`. Synthetic ORIGIN is Genesis's persisted
+selected-parent identity, but it is never inserted into `direct_parents` or
+emitted as a graph parent. The payload therefore identifies the selected-parent
+coordinate without duplicating its hash.
 
 `level_snapshots` is non-repeating by level and contains complete post-commit
 snapshots for the inserted block's level, always, and every distinct
