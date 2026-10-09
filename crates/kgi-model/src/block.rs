@@ -69,7 +69,7 @@ pub enum BlockColor {
     Red,
 }
 
-/// A normalized full node block admitted across the NodeService boundary.
+/// A normalized full node block with independently canonical relationship vectors.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ValidatedNodeBlock {
     pub hash: BlockHash,

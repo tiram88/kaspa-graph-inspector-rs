@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use kaspa_consensus_core::blockhash::ORIGIN;
 use kaspa_rpc_core::{GetBlocksResponse, GetVirtualChainFromBlockV2Response, RpcBlock};
@@ -164,7 +164,7 @@ impl ResponseNormalizer {
 
         check_score(header.blue_score, MAX_BLUE_SCORE, ScoreRangeFault::BlueScore).map_err(response_to_block_error)?;
         let verbose = block.verbose_data.ok_or(BlockNormalizationError::MissingVerboseData)?;
-        let direct_parents = header.parents_by_level.into_iter().next().unwrap_or_default();
+        let direct_parents = retain_first_occurrences(header.parents_by_level.into_iter().next().unwrap_or_default());
         if !direct_parents.contains(&verbose.selected_parent_hash) {
             return Err(BlockNormalizationError::SelectedParentNotDirect);
         }
@@ -173,14 +173,20 @@ impl ResponseNormalizer {
             hash: header.hash,
             selected_parent: verbose.selected_parent_hash,
             direct_parents,
-            blue_merge_set: verbose.merge_set_blues_hashes,
-            red_merge_set: verbose.merge_set_reds_hashes,
+            blue_merge_set: retain_first_occurrences(verbose.merge_set_blues_hashes),
+            red_merge_set: retain_first_occurrences(verbose.merge_set_reds_hashes),
             timestamp: header.timestamp,
             daa_score: header.daa_score,
             blue_score: header.blue_score,
             blue_work: header.blue_work,
         })
     }
+}
+
+fn retain_first_occurrences(mut hashes: Vec<BlockHash>) -> Vec<BlockHash> {
+    let mut seen = HashSet::with_capacity(hashes.len());
+    hashes.retain(|hash| seen.insert(*hash));
+    hashes
 }
 
 fn check_score(value: u64, maximum: u64, fault: ScoreRangeFault) -> Result<(), ResponseNormalizationError> {
@@ -221,24 +227,25 @@ mod tests {
     use super::{ResponseNormalizationError, ResponseNormalizer};
 
     #[test]
-    fn ordinary_full_block_preserves_consumed_sequences_and_ignores_redundancy() {
+    fn ordinary_full_block_canonicalizes_relationships_and_ignores_redundancy() {
         let own = hash(1);
         let selected_parent = hash(2);
         let repeated_parent = hash(3);
-        let mut block = rpc_block(own, vec![selected_parent, repeated_parent, selected_parent]);
+        let overlap = hash(4);
+        let mut block = rpc_block(own, vec![selected_parent, repeated_parent, own, selected_parent, own]);
         let verbose = block.verbose_data.as_mut().expect("verbose data");
         verbose.hash = hash(90);
         verbose.blue_score = u64::MAX;
-        verbose.merge_set_blues_hashes = vec![own, hash(4), hash(4)];
-        verbose.merge_set_reds_hashes = vec![hash(5), selected_parent, hash(5)];
+        verbose.merge_set_blues_hashes = vec![own, overlap, overlap];
+        verbose.merge_set_reds_hashes = vec![hash(5), overlap, selected_parent, hash(5)];
 
         let normalized = normalizer(hash(0)).validated_block(block).expect("valid ordinary block");
 
         assert_eq!(normalized.hash, own);
         assert_eq!(normalized.selected_parent, selected_parent);
-        assert_eq!(normalized.direct_parents, vec![selected_parent, repeated_parent, selected_parent]);
-        assert_eq!(normalized.blue_merge_set, vec![own, hash(4), hash(4)]);
-        assert_eq!(normalized.red_merge_set, vec![hash(5), selected_parent, hash(5)]);
+        assert_eq!(normalized.direct_parents, vec![selected_parent, repeated_parent, own]);
+        assert_eq!(normalized.blue_merge_set, vec![own, overlap]);
+        assert_eq!(normalized.red_merge_set, vec![hash(5), overlap, selected_parent]);
         assert_eq!(normalized.blue_score, 12);
     }
 
