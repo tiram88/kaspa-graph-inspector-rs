@@ -17,3 +17,4 @@ mod runtime;
 mod schema;
 #[allow(dead_code, reason = "used through database bootstrap and recovery-session preparation")]
 mod state;
+mod transaction;

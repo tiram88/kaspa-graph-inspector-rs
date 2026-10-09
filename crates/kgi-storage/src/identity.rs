@@ -46,7 +46,7 @@ pub(crate) async fn block_presence(pool: &PgPool, caches: &ProcessingCaches, has
         return Ok(BlockPresence::Absent);
     };
     let stored = decode_identity(&row)?;
-    caches.publish(hash, stored.identity, stored.coordinate);
+    caches.publish_identity(hash, stored.identity, stored.coordinate);
     Ok(match stored.coordinate {
         Some(coordinate) => BlockPresence::Materialized { id: stored.identity.id, coordinate },
         None => BlockPresence::BoundaryIdentity { id: stored.identity.id },
@@ -91,7 +91,7 @@ pub(crate) async fn resolve_materialized_ids(
             let hash = BlockHash::try_from(encoded_hash.as_slice())
                 .map_err(|error| StorageError::invalid_metadata(format!("invalid stored block hash: {error}")))?;
             let stored = decode_identity(&row)?;
-            caches.publish(hash, stored.identity, stored.coordinate);
+            caches.publish_identity(hash, stored.identity, stored.coordinate);
             resolved.insert(hash, stored.identity);
         }
     }

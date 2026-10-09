@@ -460,9 +460,33 @@ contract without teaching the service to replay an uncertain mutation.
 The processing-generation caches implement the
 [storage-owned cache requirement](../architecture/storage.md#caches-and-identity-resolution--settled).
 Start each processing cache at 432,000 entries, covering approximately twelve
-hours at 10 blocks per second. The merge-set cache is added with the same
-capacity when its first consuming persistence transaction is implemented.
+hours at 10 blocks per second.
 
 Put the storage-specific public result types in the module-qualified
 `kgi_storage::operation` namespace. Deduplicate only the SQL misses before
 constructing the cold batch's left-joined query.
+
+### Materialization transaction execution
+
+Implement the
+[storage-owned transaction policy](../architecture/storage.md#transaction-retries)
+through one private closure-based runner shared by processing mutations. It
+classifies raw SQLx errors before their SQLSTATE is erased and consumes the
+shared injectable `Timing` value. Give each processing generation a
+`tokio::sync::Mutex` materialization
+lane; hold its guard through the complete transaction, any retry delay, definite
+commit, and cache publication. This preserves sequential allocation without
+serializing the separately owned VSPC mutation lane.
+
+Keep SQL and committed-payload construction in the private `materialization`
+module and reusable retry classification in the private `transaction` module.
+Each materialization attempt seeds its resolved-identity map from complete
+positive processing-cache entries. A cached materialized identity whose
+independently cached coordinate is absent remains a SQL miss; all remaining
+hashes use one transaction-local batch query. Only those miss-path identities,
+including rows interned later in the attempt, become post-success cache
+updates; complete cache hits are not republished.
+Intern the remaining absent identities in one `BYTEA[]` statement using
+`WITH ORDINALITY`; the insertion source and returned rows follow the universal
+first-occurrence order. Insert direct-parent rows in one parallel-array
+`UNNEST` statement; boundary identities use their persisted `(0,0)` sentinel.

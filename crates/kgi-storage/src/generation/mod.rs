@@ -7,10 +7,14 @@ use std::{
 };
 
 use kaspa_consensus_core::network::NetworkId;
-use kgi_model::block::{BlockHash, BlockPresence, CompactId};
+use kgi_core::timing::Timing;
+use kgi_model::{
+    block::{BlockHash, BlockPresence, CompactId},
+    lifecycle::PersistenceFault,
+};
 use sqlx::PgPool;
 
-use tokio::sync::oneshot;
+use tokio::sync::{Mutex, oneshot};
 
 use crate::{
     cache::ProcessingCaches,
@@ -20,6 +24,8 @@ use crate::{
     runtime::{RetirementRequest, RetirementSender, RetirementTarget},
     state::ProcessingStateInspection,
 };
+
+mod materialization;
 
 /// Immutable network binding of one database generation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -124,6 +130,10 @@ pub struct ValidatedDbClient {
     runtime: GenerationRuntime<Self>,
     binding: DatabaseBinding,
     caches: ProcessingCaches,
+    materialization_lane: Mutex<()>,
+    transaction_timing: Timing,
+    #[cfg(test)]
+    materialization_commit_behavior: std::sync::Mutex<Option<materialization::CommitBehavior>>,
 }
 
 impl GenerationKind for ValidatedDbClient {
@@ -134,10 +144,23 @@ impl GenerationKind for ValidatedDbClient {
 
 impl ValidatedDbClient {
     pub(crate) fn new(pool: PgPool, binding: DatabaseBinding, retirement_tx: RetirementSender) -> Arc<Self> {
+        Self::new_with_transaction_timing(pool, binding, retirement_tx, Timing::production())
+    }
+
+    fn new_with_transaction_timing(
+        pool: PgPool,
+        binding: DatabaseBinding,
+        retirement_tx: RetirementSender,
+        transaction_timing: Timing,
+    ) -> Arc<Self> {
         Arc::new_cyclic(|self_weak| Self {
             runtime: GenerationRuntime::new(pool, retirement_tx, self_weak.clone()),
             binding,
             caches: ProcessingCaches::new(),
+            materialization_lane: Mutex::new(()),
+            transaction_timing,
+            #[cfg(test)]
+            materialization_commit_behavior: std::sync::Mutex::new(None),
         })
     }
 
@@ -193,6 +216,16 @@ impl ValidatedDbClient {
         self.runtime.request_retirement().await
     }
 
+    #[cfg(test)]
+    pub(crate) fn has_cached_identity(&self, hash: BlockHash) -> bool {
+        self.caches.identity(hash).is_some()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn has_cached_merge_sets(&self, id: CompactId) -> bool {
+        self.caches.merge_sets(id).is_some()
+    }
+
     async fn run_operation<T, F, Fut>(&self, operation: F) -> Result<T, StorageError>
     where
         F: FnOnce() -> Fut,
@@ -202,6 +235,10 @@ impl ValidatedDbClient {
             return Err(StorageError::GenerationLost);
         }
         match operation().await {
+            Err(error @ StorageError::Persistence(PersistenceFault::AmbiguousCommit)) => {
+                self.request_retirement().await?;
+                Err(error)
+            }
             Err(error) if error.is_connection_lost() => {
                 self.request_retirement().await?;
                 Err(StorageError::GenerationLost)
@@ -281,11 +318,18 @@ mod tests {
     };
 
     use kaspa_consensus_core::network::{NetworkId, NetworkType};
-    use kgi_model::block::{BlockCoordinate, BlockHash, CompactId};
+    use kgi_model::{
+        block::{BlockCoordinate, BlockHash, CompactId},
+        lifecycle::PersistenceFault,
+    };
     use sqlx::postgres::PgPoolOptions;
 
     use super::{DatabaseBinding, ValidatedDbClient};
-    use crate::{cache::CachedIdentity, runtime::retirement_channel};
+    use crate::{
+        cache::{CachedIdentity, CachedMergeSets},
+        error::StorageError,
+        runtime::{RetirementTarget, retirement_channel},
+    };
 
     fn hash(byte: u8) -> BlockHash {
         BlockHash::from_bytes([byte; 32])
@@ -301,14 +345,17 @@ mod tests {
         let id = CompactId::new(1).expect("positive compact ID");
         let coordinate = BlockCoordinate::new(1, 0).expect("positive level");
 
-        predecessor.caches.publish(hash(1), CachedIdentity { id, materialized: true }, Some(coordinate));
+        predecessor.caches.publish_identity(hash(1), CachedIdentity { id, materialized: true }, Some(coordinate));
+        predecessor.caches.publish_merge_sets(id, CachedMergeSets { blue: vec![hash(2)].into(), red: vec![hash(3)].into() });
         assert_eq!(predecessor.caches.identity(hash(1)).map(|identity| identity.id), Some(id));
         assert_eq!(predecessor.caches.coordinate(id), Some(coordinate));
+        assert_eq!(predecessor.caches.merge_sets(id).map(|sets| sets.blue), Some(vec![hash(2)].into()));
 
         let replacement = ValidatedDbClient::new(pool, binding, retirement_tx);
 
         assert_eq!(replacement.caches.identity(hash(1)), None);
         assert_eq!(replacement.caches.coordinate(id), None);
+        assert_eq!(replacement.caches.merge_sets(id), None);
     }
 
     #[tokio::test]
@@ -325,11 +372,38 @@ mod tests {
         let result = client
             .run_operation(|| {
                 operation_started.store(true, Ordering::Release);
-                async { Ok::<_, crate::error::StorageError>(()) }
+                async { Ok::<_, StorageError>(()) }
             })
             .await;
 
-        assert_eq!(result, Err(crate::error::StorageError::GenerationLost));
+        assert_eq!(result, Err(StorageError::GenerationLost));
         assert!(!started.load(Ordering::Acquire));
+    }
+
+    #[tokio::test]
+    async fn ambiguous_operation_retires_exact_generation_before_returning() {
+        let pool =
+            PgPoolOptions::new().connect_lazy("postgresql://postgres@localhost/kgi").expect("lazy PostgreSQL pool configuration");
+        let binding = DatabaseBinding::new(NetworkId::new(NetworkType::Mainnet), hash(0));
+        let (retirement_tx, mut retirements) = retirement_channel();
+        let client = ValidatedDbClient::new(pool, binding, retirement_tx);
+        let operation_client = Arc::clone(&client);
+        let operation = tokio::spawn(async move {
+            operation_client
+                .run_operation(|| async { Err::<(), _>(StorageError::Persistence(PersistenceFault::AmbiguousCommit)) })
+                .await
+        });
+
+        let request = retirements.recv().await.expect("ambiguous operation retirement request");
+        let retired = match request.target() {
+            RetirementTarget::Processing(generation) => generation.upgrade().expect("processing generation remains alive"),
+            RetirementTarget::Api(_) => panic!("processing operation requested API retirement"),
+        };
+        assert!(Arc::ptr_eq(&retired, &client));
+        assert!(retired.retire());
+        request.complete(Ok(()));
+
+        assert_eq!(operation.await.expect("operation task"), Err(StorageError::Persistence(PersistenceFault::AmbiguousCommit)));
+        assert!(!client.is_valid());
     }
 }
