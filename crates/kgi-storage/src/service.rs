@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 use kaspa_consensus_core::network::NetworkId;
-use kgi_core::timing::{Clock, EqualJitter, Jitter, TokioClock};
+use kgi_core::timing::Timing;
 use kgi_model::{
     block::BlockHash,
     lifecycle::{StorageServiceStatus, StorageServiceStatusState},
@@ -72,28 +72,21 @@ impl StorageService {
     /// Starts the permanent database lifecycle worker with its event path installed.
     #[must_use]
     pub fn start(database_url: Url) -> (Arc<Self>, StorageServiceEventReceiver) {
-        Self::start_with_dependencies(
-            database_url,
-            Arc::new(SqlxDatabaseConnector),
-            Arc::new(TokioClock),
-            Arc::new(EqualJitter::from_entropy()),
-        )
+        Self::start_with_dependencies(database_url, Arc::new(SqlxDatabaseConnector), Timing::production())
     }
 
     fn start_with_dependencies(
         database_url: Url,
         connector: Arc<dyn DatabaseConnector>,
-        clock: Arc<dyn Clock>,
-        jitter: Arc<dyn Jitter>,
+        timing: Timing,
     ) -> (Arc<Self>, StorageServiceEventReceiver) {
-        Self::start_with_generation_opener(database_url, connector, clock, jitter, Arc::new(SqlxGenerationOpener))
+        Self::start_with_generation_opener(database_url, connector, timing, Arc::new(SqlxGenerationOpener))
     }
 
     fn start_with_generation_opener(
         database_url: Url,
         connector: Arc<dyn DatabaseConnector>,
-        clock: Arc<dyn Clock>,
-        jitter: Arc<dyn Jitter>,
+        timing: Timing,
         generation_opener: Arc<dyn GenerationOpener>,
     ) -> (Arc<Self>, StorageServiceEventReceiver) {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
@@ -108,8 +101,7 @@ impl StorageService {
         let worker = StorageServiceWorker {
             database_url,
             connector,
-            clock,
-            jitter,
+            timing,
             events: event_tx,
             commands: command_rx,
             retirements: retirement_rx,
@@ -256,8 +248,7 @@ impl GenerationOpener for SqlxGenerationOpener {}
 struct StorageServiceWorker {
     database_url: Url,
     connector: Arc<dyn DatabaseConnector>,
-    clock: Arc<dyn Clock>,
-    jitter: Arc<dyn Jitter>,
+    timing: Timing,
     events: mpsc::UnboundedSender<StorageServiceEvent>,
     commands: mpsc::UnboundedReceiver<ServiceCommand>,
     retirements: RetirementReceiver,
@@ -443,7 +434,7 @@ impl StorageServiceWorker {
                 let binding = active.binding;
                 let opening = async move { generation_opener.open_processing(database_url, binding, retirement_tx).await };
                 tokio::pin!(opening);
-                let health = wait_for_lock_health(self.clock.clone());
+                let health = wait_for_lock_health(self.timing.clone());
                 tokio::pin!(health);
                 loop {
                     tokio::select! {
@@ -472,17 +463,17 @@ impl StorageServiceWorker {
                                 self.handle_lock_loss(active).await?;
                                 return Ok(ActiveExit::Reconnect);
                             }
-                            health.set(wait_for_lock_health(self.clock.clone()));
+                            health.set(wait_for_lock_health(self.timing.clone()));
                         },
                         command = self.commands.recv() => {
                             if let Some(exit) = self.handle_active_command(command, database, active).await? {
                                 return Ok(exit);
                             }
-                            health.set(wait_for_lock_health(self.clock.clone()));
+                            health.set(wait_for_lock_health(self.timing.clone()));
                         },
                         request = self.retirements.recv() => {
                             self.handle_retirement(request, active).await?;
-                            health.set(wait_for_lock_health(self.clock.clone()));
+                            health.set(wait_for_lock_health(self.timing.clone()));
                         },
                     }
                 }
@@ -496,7 +487,7 @@ impl StorageServiceWorker {
                 let retirement_tx = self.retirement_tx.clone();
                 let opening = async move { generation_opener.open_api(database_url, retirement_tx).await };
                 tokio::pin!(opening);
-                let health = wait_for_lock_health(self.clock.clone());
+                let health = wait_for_lock_health(self.timing.clone());
                 tokio::pin!(health);
                 loop {
                     tokio::select! {
@@ -525,17 +516,17 @@ impl StorageServiceWorker {
                                 self.handle_lock_loss(active).await?;
                                 return Ok(ActiveExit::Reconnect);
                             }
-                            health.set(wait_for_lock_health(self.clock.clone()));
+                            health.set(wait_for_lock_health(self.timing.clone()));
                         },
                         command = self.commands.recv() => {
                             if let Some(exit) = self.handle_active_command(command, database, active).await? {
                                 return Ok(exit);
                             }
-                            health.set(wait_for_lock_health(self.clock.clone()));
+                            health.set(wait_for_lock_health(self.timing.clone()));
                         },
                         request = self.retirements.recv() => {
                             self.handle_retirement(request, active).await?;
-                            health.set(wait_for_lock_health(self.clock.clone()));
+                            health.set(wait_for_lock_health(self.timing.clone()));
                         },
                     }
                 }
@@ -543,10 +534,10 @@ impl StorageServiceWorker {
             }
 
             self.publish_status(StorageServiceStatusState::Ready);
-            let ready_clock = self.clock.clone();
-            let ready_reset = async move { ready_clock.sleep(READY_BACKOFF_RESET).await };
+            let ready_timing = self.timing.clone();
+            let ready_reset = async move { ready_timing.sleep(READY_BACKOFF_RESET).await };
             tokio::pin!(ready_reset);
-            let health = wait_for_lock_health(self.clock.clone());
+            let health = wait_for_lock_health(self.timing.clone());
             tokio::pin!(health);
             let mut reset_complete = false;
             loop {
@@ -555,27 +546,27 @@ impl StorageServiceWorker {
                     () = &mut ready_reset, if !reset_complete => {
                         *retry_index = 0;
                         reset_complete = true;
-                        health.set(wait_for_lock_health(self.clock.clone()));
+                        health.set(wait_for_lock_health(self.timing.clone()));
                     }
                     () = &mut health => {
                         if database.ping().await.is_err() {
                             self.handle_lock_loss(active).await?;
                             return Ok(ActiveExit::Reconnect);
                         }
-                        health.set(wait_for_lock_health(self.clock.clone()));
+                        health.set(wait_for_lock_health(self.timing.clone()));
                     }
                     command = self.commands.recv() => {
                         if let Some(exit) = self.handle_active_command(command, database, active).await? {
                             return Ok(exit);
                         }
-                        health.set(wait_for_lock_health(self.clock.clone()));
+                        health.set(wait_for_lock_health(self.timing.clone()));
                     },
                     request = self.retirements.recv() => {
                         self.handle_retirement(request, active).await?;
                         if active.processing.is_none() || (active.api_required && active.api.is_none()) {
                             break;
                         }
-                        health.set(wait_for_lock_health(self.clock.clone()));
+                        health.set(wait_for_lock_health(self.timing.clone()));
                     }
                 }
             }
@@ -670,11 +661,10 @@ impl StorageServiceWorker {
     ) -> Result<ActiveRetryExit, StorageError> {
         let nominal = RETRY_DELAYS[(*retry_index).min(RETRY_DELAYS.len() - 1)];
         *retry_index = retry_index.saturating_add(1);
-        let delay = self.jitter.apply(nominal);
-        let clock = self.clock.clone();
-        let sleep = async move { clock.sleep(delay).await };
+        let timing = self.timing.clone();
+        let sleep = async move { timing.sleep_jittered(nominal).await };
         tokio::pin!(sleep);
-        let health = wait_for_lock_health(self.clock.clone());
+        let health = wait_for_lock_health(self.timing.clone());
         tokio::pin!(health);
         loop {
             tokio::select! {
@@ -685,17 +675,17 @@ impl StorageServiceWorker {
                         self.handle_lock_loss(active).await?;
                         return Ok(ActiveRetryExit::Exit(ActiveExit::Reconnect));
                     }
-                    health.set(wait_for_lock_health(self.clock.clone()));
+                    health.set(wait_for_lock_health(self.timing.clone()));
                 },
                 command = self.commands.recv() => {
                     if let Some(exit) = self.handle_active_command(command, database, active).await? {
                         return Ok(ActiveRetryExit::Exit(exit));
                     }
-                    health.set(wait_for_lock_health(self.clock.clone()));
+                    health.set(wait_for_lock_health(self.timing.clone()));
                 },
                 request = self.retirements.recv() => {
                     self.handle_retirement(request, active).await?;
-                    health.set(wait_for_lock_health(self.clock.clone()));
+                    health.set(wait_for_lock_health(self.timing.clone()));
                 },
             }
         }
@@ -714,7 +704,7 @@ impl StorageServiceWorker {
     ) -> Result<bool, StorageError> {
         let nominal = RETRY_DELAYS[(*retry_index).min(RETRY_DELAYS.len() - 1)];
         *retry_index = retry_index.saturating_add(1);
-        let sleep = self.clock.sleep(self.jitter.apply(nominal));
+        let sleep = self.timing.sleep_jittered(nominal);
         tokio::pin!(sleep);
         loop {
             tokio::select! {
@@ -941,8 +931,8 @@ fn complete_stale_retirement(request: Option<RetirementRequest>) -> Result<(), S
     Ok(())
 }
 
-async fn wait_for_lock_health(clock: Arc<dyn Clock>) {
-    clock.sleep(LOCK_HEALTH_INTERVAL).await;
+async fn wait_for_lock_health(timing: Timing) {
+    timing.sleep(LOCK_HEALTH_INTERVAL).await;
 }
 
 #[cfg(test)]
@@ -957,7 +947,7 @@ mod tests {
 
     use async_trait::async_trait;
     use kaspa_consensus_core::network::{NetworkId, NetworkType};
-    use kgi_core::timing::{Clock, Jitter};
+    use kgi_core::timing::{Clock, Jitter, Timing};
     use kgi_model::{block::BlockHash, lifecycle::StorageServiceStatusState};
     use sqlx::{Connection, PgConnection};
     use testcontainers_modules::{
@@ -1285,7 +1275,7 @@ mod tests {
         let (sleep_tx, mut sleeps) = mpsc::unbounded_channel();
         let clock = Arc::new(ManualClock { sleeps: sleep_tx });
         let (service, mut events) =
-            StorageService::start_with_dependencies(database_url, connector.clone(), clock, Arc::new(IdentityJitter));
+            StorageService::start_with_dependencies(database_url, connector.clone(), Timing::new(clock, Arc::new(IdentityJitter)));
 
         timeout(TEST_TIMEOUT, started_rx.recv()).await.expect("startup must begin").expect("startup observer");
         connector.permit.add_permits(1);
@@ -1311,7 +1301,7 @@ mod tests {
         let (sleep_tx, mut sleeps) = mpsc::unbounded_channel();
         let clock = Arc::new(ManualClock { sleeps: sleep_tx });
         let (service, mut events) =
-            StorageService::start_with_dependencies(database_url, connector.clone(), clock, Arc::new(IdentityJitter));
+            StorageService::start_with_dependencies(database_url, connector.clone(), Timing::new(clock, Arc::new(IdentityJitter)));
 
         let first_retry = timeout(TEST_TIMEOUT, sleeps.recv()).await.expect("first migration retry").expect("clock path");
         assert_eq!(first_retry.duration, Duration::from_secs(1));
@@ -1430,8 +1420,11 @@ mod tests {
         });
         let (sleep_tx, mut sleeps) = mpsc::unbounded_channel();
         let clock = Arc::new(ManualClock { sleeps: sleep_tx });
-        let (service, mut events) =
-            StorageService::start_with_dependencies(database_url.clone(), connector.clone(), clock, Arc::new(IdentityJitter));
+        let (service, mut events) = StorageService::start_with_dependencies(
+            database_url.clone(),
+            connector.clone(),
+            Timing::new(clock, Arc::new(IdentityJitter)),
+        );
 
         let processing = match next_event(&mut events).await {
             StorageServiceEvent::ProcessingDbPublished(client) => client,
@@ -1524,8 +1517,7 @@ mod tests {
         let (service, mut events) = StorageService::start_with_generation_opener(
             database_url.clone(),
             connector.clone(),
-            clock,
-            Arc::new(IdentityJitter),
+            Timing::new(clock, Arc::new(IdentityJitter)),
             generation_opener.clone(),
         );
 
@@ -1580,8 +1572,7 @@ mod tests {
         let (service, mut events) = StorageService::start_with_generation_opener(
             database_url.clone(),
             connector.clone(),
-            clock,
-            Arc::new(IdentityJitter),
+            Timing::new(clock, Arc::new(IdentityJitter)),
             generation_opener.clone(),
         );
         wait_for_status(&service, StorageServiceStatusState::AwaitingInitialization).await;
@@ -1873,7 +1864,7 @@ mod tests {
         let (sleep_tx, mut sleeps) = mpsc::unbounded_channel();
         let clock = Arc::new(ManualClock { sleeps: sleep_tx });
         let (service, mut events) =
-            StorageService::start_with_dependencies(database_url, connector.clone(), clock, Arc::new(IdentityJitter));
+            StorageService::start_with_dependencies(database_url, connector.clone(), Timing::new(clock, Arc::new(IdentityJitter)));
 
         timeout(TEST_TIMEOUT, started_rx.recv()).await.expect("startup must begin").expect("startup observer");
         let initialization_service = service.clone();
@@ -1944,7 +1935,7 @@ mod tests {
         let clock = Arc::new(ManualClock { sleeps: sleep_tx });
         let database_url = Url::parse("postgresql://localhost/kgi").expect("test URL");
         let (service, _events) =
-            StorageService::start_with_dependencies(database_url, connector.clone(), clock, Arc::new(IdentityJitter));
+            StorageService::start_with_dependencies(database_url, connector.clone(), Timing::new(clock, Arc::new(IdentityJitter)));
 
         for expected in [Duration::from_secs(1), Duration::from_secs(2)] {
             let sleep = timeout(TEST_TIMEOUT, sleep_rx.recv())
@@ -1972,7 +1963,7 @@ mod tests {
         let (sleep_tx, mut sleeps) = mpsc::unbounded_channel();
         let clock = Arc::new(ManualClock { sleeps: sleep_tx });
         let (service, mut events) =
-            StorageService::start_with_dependencies(database_url.clone(), connector, clock, Arc::new(IdentityJitter));
+            StorageService::start_with_dependencies(database_url.clone(), connector, Timing::new(clock, Arc::new(IdentityJitter)));
 
         let first_retry = timeout(TEST_TIMEOUT, sleeps.recv()).await.expect("first retry timer").expect("clock path");
         assert_eq!(first_retry.duration, Duration::from_secs(1));

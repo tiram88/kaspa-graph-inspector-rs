@@ -222,7 +222,8 @@ Use `serde_json` only to decode the upstream `OverrideParams` representation,
 `url` for the already parsed endpoint, `thiserror` for typed errors, and
 `async-trait` for private testable adapter traits. Tokio supplies the worker,
 channels, status observation, completion barriers, and RPC permits;
-`kgi-core::timing` supplies the shared clock and jitter mechanism. All
+`kgi-core::timing` supplies one cloneable `Timing` dependency wrapping the
+shared object-safe clock and jitter interfaces. All
 rusty-kaspa crates use the same workspace tag and lockfile revision accepted by
 the [current PUAR](../architecture/verification.md#current-puar-result).
 
@@ -262,11 +263,11 @@ that return real upstream response value types. This avoids implementing the
 complete upstream RPC trait or duplicating a gRPC server while still testing
 KGI-owned request construction, normalization, retirement, and ordering.
 
-Inject the shared object-safe `kgi-core::timing` clock and jitter interfaces
-through NodeService's private runtime dependencies. Production uses the shared
-Tokio clock and entropy-seeded equal-jitter source. Tests provide a manually
-advanced clock and scripted jitter, so reconnect slots, the Ready reset
-boundary, and shutdown cancellation contain no wall-clock sleeps or
+Inject the shared `kgi-core::timing::Timing` value through NodeService's private
+runtime dependencies. Production combines the Tokio clock and entropy-seeded
+equal-jitter source. Tests combine a manually advanced clock and scripted
+jitter, so reconnect slots, the Ready reset boundary, and shutdown cancellation
+contain no wall-clock sleeps or
 probabilistic assertions. Exact delays and reset behavior remain owned by the
 [NodeService lifecycle](../architecture/node-service.md#nodeservice--settled).
 
@@ -353,7 +354,7 @@ capabilities, and the Supervisor-facing service lifecycle respectively. Keep
 SQLx adaptation, migration execution, schema inspection, processing-state
 inspection, service-loop commands, and retirement plumbing in private
 `database`, `migration`, `schema`, `state`, and `runtime` modules. Consume the
-generic clock and jitter mechanism from `kgi-core::timing`. Expose the public
+generic `Timing` wrapper from `kgi-core::timing`. Expose the public
 modules without crate-root wildcard re-exports.
 
 These boundaries do not expose SQLx pools, connections, transactions, raw
@@ -433,10 +434,10 @@ and 60-second Ready reset remain defined by the
 [storage lifecycle](../architecture/storage.md#storageservice-lifecycle--settled).
 
 Inject the private lock connector, generation opener, and shared
-`kgi-core::timing` clock and jitter interfaces into the worker. Production uses
-SQLx plus the shared Tokio clock and entropy-seeded equal-jitter source; tests
-use scripted connection results, gated initial and replacement opening,
-individually controlled sleeps, and identity jitter. PostgreSQL container tests
+`kgi-core::timing::Timing` value into the worker. Production uses SQLx plus the
+Tokio clock and entropy-seeded equal-jitter source; tests use scripted
+connection results, gated initial and replacement opening, individually
+controlled sleeps, and identity jitter. PostgreSQL container tests
 terminate the actual advisory-lock backend to verify exact retirement,
 suppression of initial or replacement publication until ownership is
 reacquired, and autonomous republication. The
