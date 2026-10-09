@@ -26,6 +26,7 @@ use crate::{
 };
 
 mod materialization;
+mod vspc;
 
 /// Immutable network binding of one database generation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -131,9 +132,12 @@ pub struct ValidatedDbClient {
     binding: DatabaseBinding,
     caches: ProcessingCaches,
     materialization_lane: Mutex<()>,
+    vspc_lane: Mutex<()>,
     transaction_timing: Timing,
     #[cfg(test)]
     materialization_commit_behavior: std::sync::Mutex<Option<materialization::CommitBehavior>>,
+    #[cfg(test)]
+    vspc_commit_behavior: std::sync::Mutex<Option<vspc::CommitBehavior>>,
 }
 
 impl GenerationKind for ValidatedDbClient {
@@ -158,9 +162,12 @@ impl ValidatedDbClient {
             binding,
             caches: ProcessingCaches::new(),
             materialization_lane: Mutex::new(()),
+            vspc_lane: Mutex::new(()),
             transaction_timing,
             #[cfg(test)]
             materialization_commit_behavior: std::sync::Mutex::new(None),
+            #[cfg(test)]
+            vspc_commit_behavior: std::sync::Mutex::new(None),
         })
     }
 
@@ -346,10 +353,19 @@ mod tests {
         let coordinate = BlockCoordinate::new(1, 0).expect("positive level");
 
         predecessor.caches.publish_identity(hash(1), CachedIdentity { id, materialized: true }, Some(coordinate));
-        predecessor.caches.publish_merge_sets(id, CachedMergeSets { blue: vec![hash(2)].into(), red: vec![hash(3)].into() });
+        predecessor.caches.publish_merge_sets(
+            id,
+            CachedMergeSets {
+                blue: vec![CompactId::new(2).expect("positive ID")].into(),
+                red: vec![CompactId::new(3).expect("positive ID")].into(),
+            },
+        );
         assert_eq!(predecessor.caches.identity(hash(1)).map(|identity| identity.id), Some(id));
         assert_eq!(predecessor.caches.coordinate(id), Some(coordinate));
-        assert_eq!(predecessor.caches.merge_sets(id).map(|sets| sets.blue), Some(vec![hash(2)].into()));
+        assert_eq!(
+            predecessor.caches.merge_sets(id).map(|sets| sets.blue),
+            Some(vec![CompactId::new(2).expect("positive ID")].into())
+        );
 
         let replacement = ValidatedDbClient::new(pool, binding, retirement_tx);
 

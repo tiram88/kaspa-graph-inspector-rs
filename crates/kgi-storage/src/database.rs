@@ -19,6 +19,7 @@ use crate::{
 const ADVISORY_LOCK_KEY: i64 = 0x4b47_4932_0000_0001;
 const PROCESSING_POOL_SIZE: u32 = 4;
 const API_POOL_SIZE: u32 = 8;
+pub(crate) const NO_VSPC_DAA_SCORE: i64 = i64::MAX;
 
 pub(crate) struct ValidatedGenerations {
     processing: Arc<ValidatedDbClient>,

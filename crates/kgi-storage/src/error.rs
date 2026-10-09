@@ -2,10 +2,12 @@ use std::sync::Arc;
 
 use kaspa_consensus_core::network::NetworkId;
 use kgi_model::{
-    block::BlockHash,
+    block::{BlockHash, CompactId},
     lifecycle::{PersistenceFault, ScoreRangeFault},
 };
 use thiserror::Error;
+
+use crate::operation::VspcPathConflict;
 
 /// Permanent reason a PostgreSQL database cannot be used by KGI.
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
@@ -64,6 +66,21 @@ pub enum StorageError {
     /// A caller supplied a score outside KGI's persistent range.
     #[error("score is outside KGI's persistent range: {0:?}")]
     ScoreOutOfRange(ScoreRangeFault),
+
+    /// The supplied VSPC source is not the database's currently committed sink.
+    #[error("VSPC source does not equal the currently committed sink")]
+    VspcSourceDiscontinuity,
+
+    /// A directly named VSPC chain member is not materialized.
+    #[error("VSPC chain member is not materialized: {id}")]
+    VspcMemberNotMaterialized {
+        /// Database-local identity of the nonmaterialized chain member.
+        id: CompactId,
+    },
+
+    /// Persisted selected-parent evidence does not follow the supplied VSPC path.
+    #[error("VSPC selected-parent path is discontinuous at {0:?}")]
+    VspcPathDiscontinuity(VspcPathConflict),
 
     /// The database is permanently incompatible with this process.
     #[error(transparent)]

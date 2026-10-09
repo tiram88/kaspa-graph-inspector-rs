@@ -12,13 +12,11 @@ use sqlx::{PgPool, Postgres, Row, Transaction};
 use super::ValidatedDbClient;
 use crate::{
     cache::{CachedIdentity, CachedMergeSets, ProcessingCaches},
-    database::{daa_score_to_sql, timestamp_to_sql},
+    database::{NO_VSPC_DAA_SCORE, daa_score_to_sql, timestamp_to_sql},
     error::StorageError,
     operation::{MaterializeBlockError, MaterializeBlockOutcome, ReferencePolicy},
     transaction::{self, TransactionAttemptError},
 };
-
-const NO_VSPC_DAA_SCORE: i64 = i64::MAX;
 
 #[derive(Clone, Copy)]
 pub(super) enum CommitBehavior {
@@ -367,7 +365,10 @@ async fn attempt(
             .collect(),
         merge_sets: Some((
             own_id,
-            CachedMergeSets { blue: Arc::clone(&prepared.blue_merge_set), red: Arc::clone(&prepared.red_merge_set) },
+            CachedMergeSets {
+                blue: blue_ids.iter().map(|id| CompactId::new(*id).expect("resolved blue merge-set IDs are positive")).collect(),
+                red: red_ids.iter().map(|id| CompactId::new(*id).expect("resolved red merge-set IDs are positive")).collect(),
+            },
         )),
     })
 }

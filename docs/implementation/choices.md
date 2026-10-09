@@ -490,3 +490,26 @@ Intern the remaining absent identities in one `BYTEA[]` statement using
 `WITH ORDINALITY`; the insertion source and returned rows follow the universal
 first-occurrence order. Insert direct-parent rows in one parallel-array
 `UNNEST` statement; boundary identities use their persisted `(0,0)` sentinel.
+
+### VSPC transaction execution
+
+Give each processing generation a second `tokio::sync::Mutex` lane for VSPC
+mutations. Hold it through complete-transaction retries, definite commit, and
+merge-set cache publication. The materialization and VSPC lane guards are
+independent, so their PostgreSQL transactions may overlap as required by the
+[storage concurrency contract](../architecture/storage.md#internal-concurrency).
+
+Store compact IDs, rather than hashes, in the generation-owned merge-set
+cache. Materialization already resolves those IDs transactionally, and VSPC
+coloring consumes the same persisted representation. Load direct VSPC member
+rows once for a first-occurrence-distinct ID batch while retaining the original
+ordered vectors for path validation and transition semantics. Load merge sets
+only for distinct added IDs that miss the cache, and publish those immutable
+entries only after definite commit.
+
+Compute the final merge-member color for each compact ID by replaying every
+added position in memory in its blue-then-red order, then issue one parallel
+ID/color `UNNEST` update. This preserves the settled last-write result across
+cross-color overlap and repeated added positions without one SQL statement per
+member. Update and return all distinct affected level states through one
+transaction-local CTE, so the committed outcome requires no post-commit read.

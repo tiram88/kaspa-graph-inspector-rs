@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use kgi_model::{
-    block::{BlockCoordinate, BlockHash, CompactId},
-    graph_update::BlockCommitted,
+    block::{BlockCoordinate, BlockHash, CompactId, VspcPoint},
+    graph_update::{BlockCommitted, LevelCommitted},
 };
 use thiserror::Error;
 
@@ -62,4 +62,24 @@ pub enum MaterializeBlockError {
         /// Boundary references, deduplicated in universal first-occurrence order.
         identity_only: Arc<[BlockHash]>,
     },
+}
+
+/// Persisted evidence for the first selected-parent discontinuity in a VSPC path.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct VspcPathConflict {
+    /// Child whose persisted selected parent failed the path check.
+    pub child: BlockHash,
+    /// Parent required by the supplied transition.
+    pub expected_parent: BlockHash,
+    /// Parent stored for the child in this database generation.
+    pub stored_parent: BlockHash,
+}
+
+/// Authoritative result of one definitely committed VSPC transition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VspcCommitOutcome {
+    /// Definitely committed destination point supplied by the consumed change.
+    pub destination: VspcPoint,
+    /// Complete final snapshots of every level evaluated by the transaction.
+    pub level_snapshots: Arc<[LevelCommitted]>,
 }

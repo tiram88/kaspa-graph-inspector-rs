@@ -15,8 +15,8 @@ pub(crate) struct CachedIdentity {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct CachedMergeSets {
-    pub(crate) blue: Arc<[BlockHash]>,
-    pub(crate) red: Arc<[BlockHash]>,
+    pub(crate) blue: Arc<[CompactId]>,
+    pub(crate) red: Arc<[CompactId]>,
 }
 
 pub(crate) struct ProcessingCaches {
@@ -93,18 +93,18 @@ mod tests {
 
         caches.publish_identity(hash(1), CachedIdentity { id: id(1), materialized: true }, Some(coordinate(1)));
         caches.publish_identity(hash(2), CachedIdentity { id: id(2), materialized: true }, Some(coordinate(2)));
-        caches.publish_merge_sets(id(1), CachedMergeSets { blue: vec![hash(4)].into(), red: vec![hash(5)].into() });
-        caches.publish_merge_sets(id(2), CachedMergeSets { blue: vec![hash(6)].into(), red: vec![hash(7)].into() });
+        caches.publish_merge_sets(id(1), CachedMergeSets { blue: vec![id(4)].into(), red: vec![id(5)].into() });
+        caches.publish_merge_sets(id(2), CachedMergeSets { blue: vec![id(6)].into(), red: vec![id(7)].into() });
 
         assert_eq!(caches.identities.policy().max_capacity(), Some(2));
         assert_eq!(caches.coordinates.policy().max_capacity(), Some(2));
         assert_eq!(caches.merge_sets.policy().max_capacity(), Some(2));
         assert_eq!(caches.identity(hash(1)).map(|identity| identity.id), Some(id(1)));
         assert_eq!(caches.coordinate(id(1)), Some(coordinate(1)));
-        assert_eq!(caches.merge_sets(id(1)).map(|sets| sets.blue), Some(vec![hash(4)].into()));
+        assert_eq!(caches.merge_sets(id(1)).map(|sets| sets.blue), Some(vec![id(4)].into()));
 
         caches.publish_identity(hash(3), CachedIdentity { id: id(3), materialized: true }, Some(coordinate(3)));
-        caches.publish_merge_sets(id(3), CachedMergeSets { blue: vec![hash(8)].into(), red: vec![hash(9)].into() });
+        caches.publish_merge_sets(id(3), CachedMergeSets { blue: vec![id(8)].into(), red: vec![id(9)].into() });
         caches.identities.run_pending_tasks();
         caches.coordinates.run_pending_tasks();
         caches.merge_sets.run_pending_tasks();
