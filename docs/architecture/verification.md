@@ -1789,10 +1789,18 @@ tracker. Include tier-keyed Head snapshot jobs and mandatory `Prewarming` work
 in the same tracked cache and encoding infrastructure. For encoding, reserve
 bounded historical capacity before database work,
 release every database resource before submitting the detached projection,
-and enforce the settled total and historical concurrency limits. Scheduler
-shutdown rejects new work, cancels queued work, lets already active blocking
-serialization or compression finish while discarding its output, and joins
-the scheduler without a publication lock or database resource held.
+and enforce the settled total and historical concurrency limits. Verify the
+[process execution model](overview.md#process-execution-model--settled) and
+[ApiService encoding scheduler](api-service.md#cache-and-encoding-jobs) with a
+composition-root runtime assertion, a production-adapter assertion for
+`spawn_blocking`, and an instrumented blocking executor.
+Hold every active encode at a test barrier: additional jobs remain in the
+scheduler queue while async status, SSE, cancellation, and processing work
+remain pollable, and no database resource or component-state lock is held by a
+blocked encode.
+Scheduler shutdown rejects new work, cancels queued work, lets already active
+blocking serialization or compression finish while discarding its output, and
+joins the scheduler without a publication lock or database resource held.
 
 Verify the [ApiService shutdown barrier](api-service.md#apiservice-shutdown--settled)
 from `AwaitReset`, `PreSeal`, `Constructing`, `Aligning`, `Prewarming`, and
