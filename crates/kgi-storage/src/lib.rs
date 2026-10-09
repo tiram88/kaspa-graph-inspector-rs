@@ -4,9 +4,12 @@
 
 pub mod error;
 pub mod generation;
+pub mod operation;
 pub mod service;
 
+mod cache;
 mod database;
+mod identity;
 #[allow(dead_code, reason = "used through the database bootstrap lifecycle")]
 mod migration;
 mod runtime;

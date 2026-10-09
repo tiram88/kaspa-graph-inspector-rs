@@ -11,6 +11,7 @@ kaspa-consensus-core.workspace = true
 kgi-api-model = { path = "../kgi-api-model" }
 kgi-core = { path = "../kgi-core" }
 kgi-model = { path = "../kgi-model" }
+moka.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

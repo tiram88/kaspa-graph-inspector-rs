@@ -451,3 +451,17 @@ integration fixture can inject acknowledgement loss after PostgreSQL has
 accepted COMMIT, then drops the uncertain connection and runs normal database
 preparation again. This verifies the storage owner's transaction-outcome
 contract without teaching the service to replay an uncertain mutation.
+
+## 9 October 2026: Storage persistence operations
+
+### Processing-generation caches and identity reads
+
+The processing-generation caches implement the
+[storage-owned cache requirement](../architecture/storage.md#caches-and-identity-resolution--settled).
+Start each processing cache at 432,000 entries, covering approximately twelve
+hours at 10 blocks per second. The merge-set cache is added with the same
+capacity when its first consuming persistence transaction is implemented.
+
+Put the storage-specific public result types in the module-qualified
+`kgi_storage::operation` namespace. Deduplicate only the SQL misses before
+constructing the cold batch's left-joined query.

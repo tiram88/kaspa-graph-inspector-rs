@@ -1,16 +1,22 @@
-use std::sync::{
-    Arc, Weak,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    future::Future,
+    sync::{
+        Arc, Weak,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use kaspa_consensus_core::network::NetworkId;
-use kgi_model::block::{BlockHash, CompactId};
+use kgi_model::block::{BlockHash, BlockPresence, CompactId};
 use sqlx::PgPool;
 
 use tokio::sync::oneshot;
 
 use crate::{
+    cache::ProcessingCaches,
     error::StorageError,
+    identity,
+    operation::ResolveMaterializedIdsError,
     runtime::{RetirementRequest, RetirementSender, RetirementTarget},
     state::ProcessingStateInspection,
 };
@@ -117,6 +123,7 @@ impl<T: GenerationKind> GenerationRuntime<T> {
 pub struct ValidatedDbClient {
     runtime: GenerationRuntime<Self>,
     binding: DatabaseBinding,
+    caches: ProcessingCaches,
 }
 
 impl GenerationKind for ValidatedDbClient {
@@ -127,7 +134,11 @@ impl GenerationKind for ValidatedDbClient {
 
 impl ValidatedDbClient {
     pub(crate) fn new(pool: PgPool, binding: DatabaseBinding, retirement_tx: RetirementSender) -> Arc<Self> {
-        Arc::new_cyclic(|self_weak| Self { runtime: GenerationRuntime::new(pool, retirement_tx, self_weak.clone()), binding })
+        Arc::new_cyclic(|self_weak| Self {
+            runtime: GenerationRuntime::new(pool, retirement_tx, self_weak.clone()),
+            binding,
+            caches: ProcessingCaches::new(),
+        })
     }
 
     /// Returns this generation's validated immutable network binding.
@@ -138,15 +149,21 @@ impl ValidatedDbClient {
 
     /// Loads fresh local processing state for one recovery-session attempt.
     pub async fn load_session_state(&self) -> Result<StoredSessionState, StorageError> {
-        if !self.is_valid() {
-            return Err(StorageError::GenerationLost);
-        }
-        match ProcessingStateInspection::load(self.runtime.pool(), self.binding).await {
-            Err(error) if error.is_connection_lost() => {
-                self.request_retirement().await?;
-                Err(StorageError::GenerationLost)
+        self.run_operation(|| ProcessingStateInspection::load(self.runtime.pool(), self.binding)).await
+    }
+
+    /// Resolves one hash without creating or promoting a persistent identity.
+    pub async fn block_presence(&self, hash: BlockHash) -> Result<BlockPresence, StorageError> {
+        self.run_operation(|| identity::block_presence(self.runtime.pool(), &self.caches, hash)).await
+    }
+
+    /// Resolves an ordered hash batch only when every position is materialized.
+    pub async fn resolve_materialized_ids(&self, hashes: &[BlockHash]) -> Result<Box<[CompactId]>, ResolveMaterializedIdsError> {
+        match self.run_operation(|| identity::resolve_materialized_ids(self.runtime.pool(), &self.caches, hashes)).await? {
+            identity::MaterializedIdResolution::Resolved(ids) => Ok(ids),
+            identity::MaterializedIdResolution::NonMaterialized { missing, identity_only } => {
+                Err(ResolveMaterializedIdsError::NonMaterialized { missing, identity_only })
             }
-            result => result,
         }
     }
 
@@ -174,6 +191,23 @@ impl ValidatedDbClient {
 
     pub(crate) async fn request_retirement(&self) -> Result<(), StorageError> {
         self.runtime.request_retirement().await
+    }
+
+    async fn run_operation<T, F, Fut>(&self, operation: F) -> Result<T, StorageError>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<T, StorageError>>,
+    {
+        if !self.is_valid() {
+            return Err(StorageError::GenerationLost);
+        }
+        match operation().await {
+            Err(error) if error.is_connection_lost() => {
+                self.request_retirement().await?;
+                Err(StorageError::GenerationLost)
+            }
+            result => result,
+        }
     }
 }
 
@@ -236,5 +270,66 @@ impl ValidatedApiDbClient {
 impl std::fmt::Debug for ValidatedApiDbClient {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.debug_struct("ValidatedApiDbClient").field("valid", &self.is_valid()).finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    use kaspa_consensus_core::network::{NetworkId, NetworkType};
+    use kgi_model::block::{BlockCoordinate, BlockHash, CompactId};
+    use sqlx::postgres::PgPoolOptions;
+
+    use super::{DatabaseBinding, ValidatedDbClient};
+    use crate::{cache::CachedIdentity, runtime::retirement_channel};
+
+    fn hash(byte: u8) -> BlockHash {
+        BlockHash::from_bytes([byte; 32])
+    }
+
+    #[tokio::test]
+    async fn replacement_processing_generation_cannot_observe_predecessor_caches() {
+        let pool =
+            PgPoolOptions::new().connect_lazy("postgresql://postgres@localhost/kgi").expect("lazy PostgreSQL pool configuration");
+        let binding = DatabaseBinding::new(NetworkId::new(NetworkType::Mainnet), hash(0));
+        let (retirement_tx, _retirements) = retirement_channel();
+        let predecessor = ValidatedDbClient::new(pool.clone(), binding, retirement_tx.clone());
+        let id = CompactId::new(1).expect("positive compact ID");
+        let coordinate = BlockCoordinate::new(1, 0).expect("positive level");
+
+        predecessor.caches.publish(hash(1), CachedIdentity { id, materialized: true }, Some(coordinate));
+        assert_eq!(predecessor.caches.identity(hash(1)).map(|identity| identity.id), Some(id));
+        assert_eq!(predecessor.caches.coordinate(id), Some(coordinate));
+
+        let replacement = ValidatedDbClient::new(pool, binding, retirement_tx);
+
+        assert_eq!(replacement.caches.identity(hash(1)), None);
+        assert_eq!(replacement.caches.coordinate(id), None);
+    }
+
+    #[tokio::test]
+    async fn invalid_generation_does_not_start_an_operation() {
+        let pool =
+            PgPoolOptions::new().connect_lazy("postgresql://postgres@localhost/kgi").expect("lazy PostgreSQL pool configuration");
+        let binding = DatabaseBinding::new(NetworkId::new(NetworkType::Mainnet), hash(0));
+        let (retirement_tx, _retirements) = retirement_channel();
+        let client = ValidatedDbClient::new(pool, binding, retirement_tx);
+        let started = Arc::new(AtomicBool::new(false));
+        let operation_started = Arc::clone(&started);
+        assert!(client.retire());
+
+        let result = client
+            .run_operation(|| {
+                operation_started.store(true, Ordering::Release);
+                async { Ok::<_, crate::error::StorageError>(()) }
+            })
+            .await;
+
+        assert_eq!(result, Err(crate::error::StorageError::GenerationLost));
+        assert!(!started.load(Ordering::Acquire));
     }
 }
