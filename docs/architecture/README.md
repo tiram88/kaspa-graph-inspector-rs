@@ -58,7 +58,7 @@ restating it.
 | Document | Sole concern |
 |---|---|
 | `README.md` | Architecture authority, reading order, ownership boundaries, and navigation. It contains no system behavior. |
-| `overview.md` | System boundary, component ownership, core crate and repository structure, process and data-flow shape, process configuration and command entry, release and deployment layout, logging, and system-wide resource isolation. |
+| `overview.md` | System boundary, component ownership, core crate and repository structure, process and data-flow shape, process configuration and command entry, release and deployment layout, process logging, and system-wide resource isolation. |
 | `domain-model.md` | Shared identities and graph vocabulary: hashes, compact IDs, coordinates, consensus order, materiality, PP boundary, and common value types. |
 | `node-service.md` | Node connection lifecycle, validated RPC generations, subscriptions, notification routing, and RPC normalization. |
 | `storage.md` | Database lifecycle, schema and metadata, persistent identities, transactions, caches, and PostgreSQL behavior. |
@@ -71,7 +71,7 @@ restating it.
 | `api-service.md` | ApiService control, runtime and current-publication slots, database-generation binding, reset, shutdown, task completion, status aggregation, resource bulkheads, and saturation. |
 | `api-protocol.md` | Public HTTP and SSE graph contract, limits, cursors, windows, errors, ETags, response caching, and delivery behavior. |
 | `api.md` | Navigation for the focused API architecture documents. It contains no system behavior. |
-| `web.md` | Browser client behavior and presentation requirements. |
+| `web.md` | Browser client behavior, presentation requirements, and browser-side operational observation. |
 | `verification.md` | Required fixtures, integration scenarios, acceptance checks, and upstream assumptions. It references contracts without redefining them. |
 
 ## Architecture ownership map

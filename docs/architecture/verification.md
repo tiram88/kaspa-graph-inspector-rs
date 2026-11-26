@@ -2385,6 +2385,35 @@ rather than static configuration failure.
 
 ## Resource isolation and performance
 
+Verify the operational-logging baseline owned by
+[Overview](overview.md#deployment-and-logging--settled) without asserting
+incidental prose. Representative lifecycle, retry, recovery, saturation,
+failure, replacement, and shutdown paths must produce records with their
+stable component context and typed outcome. Exercise representative RPC,
+processor, persistence, cache or encoding, and graph-delivery batches and
+prove each produces one bounded summary rather than normal-severity
+item-proportional output. With deterministic time, prove a long-lived
+component emits accumulated counters and current gauges at the selected fixed
+cadence and does not emit duplicate interval snapshots. Configuration secrets,
+database credentials, authorization values, and unrestricted payloads must be
+absent from successful, failure, debug, and panic-adjacent diagnostics.
+Under the selected severity mapping, ordinary service and session lifecycle
+records must remain observable while routine successful processor and batch
+records are filtered, and abnormal or terminal outcomes must not be weaker
+than their corresponding success path.
+Logging failure or filtering must not change a typed result, lifecycle
+transition, completion barrier, or resource release.
+
+For the browser-side contract owned by
+[Web](web.md#operational-observation--settled), verify publication, SSE, recovery,
+freeze, failure, and shutdown records plus one bounded record for received,
+admitted, rejected, and replayed batches. Large batches must not produce
+normal-severity entry- or mutation-proportional records. Exercise the selected
+client-side severity mapping and aggregate cadence with deterministic time;
+ordinary lifecycle and recovery records must remain observable while routine
+successful batch summaries are filtered. Verify that record filtering or sink
+failure does not alter cursors, replay, view state, or recovery.
+
 API load tests verify the
 [system isolation contract](overview.md#resource-isolation-and-scalability--settled)
 and [API bulkheads](api-service.md#resource-isolation-and-saturation--settled).

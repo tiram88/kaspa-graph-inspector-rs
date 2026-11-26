@@ -4,8 +4,10 @@
 
 This document owns the system boundary, component ownership, core crate and
 repository structure, direction of control and data flow, process
-configuration and command entry, release and deployment layout, logging, and
-system-wide resource isolation. Shared
+configuration and command entry, release and deployment layout, process
+logging, and system-wide resource isolation. Browser-side operational
+observation belongs to the
+[Web operational-observation contract](web.md#operational-observation--settled). Shared
 identities and graph terminology belong to
 the [domain model](domain-model.md). Component behavior belongs to the linked
 focused document.
@@ -801,6 +803,49 @@ operator sources and validation belong to the
 [process configuration contract](#process-configuration-and-command-entry--settled).
 Exact rotation size and archive count remain deferred.
 
+Every KGI process production component emits operational log records for its key
+lifecycle events and externally meaningful decisions. This includes process,
+service, generation, session, worker, publication, recovery, replacement, and
+shutdown transitions; retry and terminal dispositions; saturation,
+cancellation, timeout, and unexpected termination; and the outcome of bounded
+administrative or persistence work. A record identifies the applicable stable
+context, such as a component, generation, session, publication, recovery mode,
+or operation, when that context exists. Logging is observational only: a log
+call cannot select a lifecycle disposition, replace a typed result, or delay a
+correctness barrier.
+
+Record severity reflects operational importance. Ordinary service and session
+lifecycle transitions remain visible at the normal operational level, while
+routine successful processor activity and bounded-work summaries remain
+filterable at a more detailed level. Recoverable abnormal conditions and
+terminal or unexpected failures use progressively stronger levels. The exact
+event-to-level assignment remains an implementation choice; implementations
+must preserve this relative importance and must not raise high-frequency
+success records merely to make them visible under a default filter.
+
+High-frequency success paths do not emit one normal-severity record per block,
+edge, graph mutation, or row. They emit one summary at each natural bounded
+work boundary, such as an RPC page, processor batch, database transaction,
+cache or encoding job, or delivered graph batch. A summary carries the counts,
+range or cursor progress, elapsed time, and outcome that are meaningful for
+that boundary. Long-lived components that accumulate activity without a
+natural summary boundary retain counters and current gauges and emit an
+aggregate snapshot at a fixed process-wide cadence. Exact record wording,
+event-to-level assignments, severity thresholds, aggregate cadence, exported
+metric names and labels, and tracing fields remain implementation choices; the
+required event coverage, relative severity, bounded-work summaries, and
+periodic aggregation do not.
+
+Operational records never contain configuration secrets, authorization
+values, database credentials, or unrestricted request or graph payloads.
+Routine records avoid unbounded or item-proportional fields. Detailed
+per-item diagnostics may appear only at an explicitly enabled diagnostic
+severity and remain subject to the same redaction rule.
+
+Browser-side operational observation belongs to the
+[Web operational-observation contract](web.md#operational-observation--settled); it does
+not redefine process logging or write the process log files.
+
 The standard mutable log path is `/var/log/kgi`; conventional packages create
 it for the `kgi` service user and containers mount it as a writable log volume.
 Multiple instances use distinct configured log directories. Console logging
@@ -906,5 +951,6 @@ clients may make that separation useful. Database replication is not required
 for v2. The design does not authorize multiple independent processors writing
 the same database.
 
-Exact tracing and operational endpoints remain deferred in the
+Exact metrics export and labels, tracing, aggregation cadence, and operational
+endpoints remain deferred in the
 [decision register](../decisions/deferred.md).

@@ -7,6 +7,15 @@ extraction, and two independent losslessness reviews are complete. The focused
 documents named by `docs/architecture/README.md` are the normative KGI v2
 architecture; the superseded handoffs are historical provenance.
 
+The settled operational-logging baseline now requires key-event records,
+bounded-work summaries, and fixed-cadence aggregate activity. Increment 22 and
+later production work includes instrumentation with the behavior it adds or
+changes. Existing production paths merged through increment 21 still require
+the explicit increment-24 observability audit and retrofit; current scattered
+logging calls do not constitute completion of that backlog. Exact metric
+export, tracing, operational endpoints, and the aggregate cadence remain
+deferred implementation choices.
+
 The implementation foundation is in progress from reviewed architecture
 baseline commit `f2cab146a3633964a69ebcdcb045d4729c657f0a`. The buildable
 virtual Cargo workspace, settled crate dependency skeleton, storage migration

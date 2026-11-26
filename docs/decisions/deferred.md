@@ -13,10 +13,13 @@ become durable project constraints.
 4. Detailed Tokio fairness, drain, graph-update gap counter/wakeup primitives,
    component-status watch primitives, and ProcessingSession marker-worker
    primitives.
-5. Exact metrics export and labels, tracing, operational endpoints, file-log
+5. Exact metrics export and labels, tracing, event-to-log-level assignments,
+   the fixed aggregate logging cadences, operational endpoints, file-log
    rotation size and retained archive count, service hardening directives, and
-   concrete container base images. Required v2 observability,
-   processing-latency acceptance, and the deployment layout remain settled.
+   concrete container base images. Required v2 operational event coverage,
+   relative severity, bounded-work summaries, periodic aggregation,
+   processing-latency acceptance, and the deployment layout remain settled in
+   their focused owners.
 6. Exhaustive parity matrix and additional fixtures beyond the required
     [verification baseline](../architecture/verification.md).
 Unlisted code-level choices remain implementation details only while they

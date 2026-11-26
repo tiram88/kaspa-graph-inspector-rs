@@ -134,6 +134,15 @@ to file logging being enabled or disabled. Logger initialization remains a
 later top-crate startup step; the current configuration increment defines only
 the resolved values it will consume.
 
+Production Rust crates issue records through the `kaspa-core` logging facade
+even before the top crate initializes its retained backend. High-frequency
+components keep aggregation state next to the state or mailbox it describes
+and use monotonic elapsed time for bounded-work durations. The shared
+`kgi-core::timing::Timing` capability drives deterministic fixed-cadence waits.
+Select and record the single aggregate cadence when increment 24 implements
+the common emission support; do not give individual components independent
+hard-coded intervals.
+
 Do not use clap's environment-variable integration. Capture the supported
 environment variables once into an explicit input and pass that input, the
 parsed CLI layer, and any parsed TOML layer to the resolver. This makes source

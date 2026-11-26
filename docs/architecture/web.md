@@ -173,6 +173,26 @@ batch and entry counts, queue occupancy, replay acceleration and missed
 deadlines, plus Fixed-view level-lookup count and latency. Exact metric names
 and export mechanics remain deferred.
 
+### Operational observation — settled
+
+The Web emits client-side operational records for publication replacement,
+SSE connection and registration changes, fresh-view recovery, freeze,
+transport or decoding failure, and shutdown. It emits one summary per received,
+admitted, rejected, and completely replayed delta batch, including entry count,
+revision span, queue occupancy, elapsed time, and the resulting continuation or
+recovery disposition. It does not emit one normal-severity record per replayed
+entry or graph mutation. Activity that is meaningful only in aggregate is
+reported at a fixed client-side implementation cadence. Exact client-side
+sink, record wording, event-to-level assignment, cadence, metric names, and
+export mechanics remain implementation choices. The selected levels preserve
+relative importance: lifecycle and recovery transitions remain observable
+under the ordinary operational filter, routine successful batch activity is
+filterable at a more detailed level, and abnormal or terminal outcomes use
+stronger levels. Diagnostic records never include unrestricted graph payloads
+or authorization material and never affect graph state or recovery behavior.
+
+### Coordinated delta acquisition
+
 For canonical Head-delta catch-up, the Web supplies its current opaque SSE
 `client_id` and retains the newest response continuation while replay proceeds.
 Each coordinated request captures the identifier with which it was issued.
