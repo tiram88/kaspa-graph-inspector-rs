@@ -87,8 +87,8 @@ do not enlarge the PR silently. Any future regrouping requires updating this
 sequence first.
 
 The former broad Step 6 is now increments 6–20, former Step 7 is increments
-21–25, and former Step 8 is increments 26–30. Increments 6–20 are complete;
-the active production work is increment 21, without an additional nesting
+21–25, and former Step 8 is increments 26–30. Increments 6–21 are complete;
+the active production work is increment 22, without an additional nesting
 level.
 
 | Increment / PR | Isolated production scope | Completion evidence |
@@ -119,69 +119,122 @@ level.
 | 29. Deployment and release artifacts | Complete the conventional and Docker layouts, runtime log directories, systemd and Compose examples, static-asset cache behavior, and atomic `xtask` bundle/container construction against the composed binary and Web build. | Reproducible bundle and image checks, matching binary/assets and provenance, missing-root failure, unprivileged/read-only deployment, writable logs, direct signal delivery, and atomic failure cleanup. |
 | 30. Full-stack acceptance | Add only the remaining cross-component fixtures and acceptance coverage needed to prove the focused verification contract across node RPC, PostgreSQL, recovery, API/Web, packaging, logging, and resource isolation; update implementation status with the final evidence. | Full Rust, PostgreSQL, Vitest, deterministic and complete-stack Playwright, parity, packaging, shutdown, and load/isolation suites pass from a clean checkout. |
 
-### Active increment 21: ProcessingSession construction and preparation
+### Active increment 22: ProcessingSession synchronization and Live transition
 
-Increment 21 is exactly one reviewable PR. It adds the non-reusable
-`ProcessingSession` owner around the already implemented inert processor tree
-and the existing validated RPC, processing-database, and graph-update
-capabilities. The focused
+Increment 22 is exactly one reviewable PR. It completes synchronization inside
+the non-reusable `ProcessingSession` implemented by increment 21. The focused
 [processing lifecycle](../architecture/processing-lifecycle.md),
 [block processor](../architecture/block-processing.md),
 [VSPC processor](../architecture/vspc-processing.md),
 [graph ingress](../architecture/api-ingress.md),
-[NodeService](../architecture/node-service.md),
-[Storage](../architecture/storage.md), and
+[NodeService](../architecture/node-service.md), and
 [verification](../architecture/verification.md) documents remain the sole
-owners of those contracts; this plan records only their implementation order.
+owners of the behavior; this plan records only its implementation order.
 
-Use three cohesive production commits. Keep each behavior with its focused
-tests, and do not add temporary lifecycle abstractions merely to split the
-implementation into smaller commits.
+Use three cohesive production commits. Keep the pump state machine and each
+transition with its focused tests, and do not add temporary abstractions merely
+to split the implementation into smaller commits.
 
-1. Recover the lifecycle-marker primitive from the tree at `1a7fd26`, move it
-   under ProcessingSession ownership, and adapt its local FIFO to the current
-   `Catchup` then `Live` marker protocol. Construct it inertly, start it only
-   with the initialized actor tree, retain receiver closure as the graph-feed
-   exception, distinguish internal command-path and join failure, and drain
-   already accepted work during consuming shutdown. Verify inert construction,
-   exact command order and cardinality, nonblocking local handoff, lossless
-   Live delivery under graph-channel backpressure, receiver closure, and join.
-2. Implement the preparation kernel and its complete typed outcome mapping.
-   Add the common prepared value and checked boundary-seal threshold helper.
-   Resync loads one stored-session snapshot and enriches its committed sink
-   through the exact RPC generation. Rebuild obtains one normalized current
-   pruning-point block, validates its threshold before replacement, and gives
-   that exact block to the storage replacement operation. Verify successful
-   Genesis and non-Genesis preparation, Empty and Inconsistent state, all
-   Rebuild conclusions, DAA and threshold mismatches, maximum and overflow
-   boundaries, malformed and opaque node results, every processing-database
-   error class, replacement setup/control failures, exact operation ordering,
-   and cancellation throughout Storage setup and in both linearizations of its
-   replacement-transaction boundary. Pass the session cancellation capability
-   into Storage, remove any caller-owned first-poll proxy, and continuously
-   await the same typed Storage operation through `Cancelled`, post-start
-   `Rebuilt`, or error completion.
-3. Implement the complete session owner and startup/shutdown barriers. Its
-   synchronous constructor builds the entire private inert graph from the
-   exact generations and producer. Its exact-once startup initializes both
-   processors from one prepared value, launches processors, descendants, and
-   marker worker only after successful preparation, and completes the
-   mode-specific initial handoff before returning its typed outcome. Its
-   consuming shutdown drops an inert graph or joins every launched descendant,
-   marker worker, channel, and exact-generation clone. Verify all four startup
-   outcomes, cancellation at every await boundary, generation retirement
-   races, initial milestone and partial-launch failures, absence of every
-   producer and marker before launch or Catchup, exact generation retention and
-   release, and complete predecessor joining before a fresh session can reuse
-   still-valid service generations.
-4. Reconcile the non-normative completion status and run the full Rust
-   validation suite. This is a completion record, not a fourth production
-   slice. Review corrections remain incremental commits on this PR.
+1. Add the synchronization child and complete common pump kernel in the private
+   `processing_session` module.
 
-Increment 21 adds no GetBlocks/VSPC synchronization pump, notification
-activation, Catchup handoff, Live transition, or Supervisor. Those remain in
-increments 22 and 23. It also adds no general service-generation container,
-session restart, in-place recovery-mode change, or reusable actor state.
+   - Extend `SessionRpc` with the already normalized `catchup_sink_sample`,
+     `get_blocks`, `virtual_chain_from`, and notification-activation operations.
+     Production delegates to the exact session `Arc<ValidatedRpcClient>`;
+     focused tests extend the existing static mock rather than adding a public
+     mock API, boxed futures, or another response normalizer.
+   - Construct the synchronization child inertly with the complete session
+     graph and launch it only after both processors and the marker worker have
+     started successfully. Give it explicit cancellation, completion, and
+     consuming join ownership, including any internal RPC producer tasks.
+   - Retain the initial `MaterializedSyncAnchor`, independent GetBlocks and VSPC
+     cursors, one held GetBlocks page, and at most one pending normalized
+     `VspcChange`. Use front-removable page storage so dispatching a prefix does
+     not copy or shift the retained suffix.
+   - Implement the common sequence: request VSPC from the current low hash,
+     obtain or retain the applicable GetBlocks page, enqueue blocks through the
+     VSPC destination, enqueue that VSPC change, advance its provisional cursor,
+     and only then resume the retained page suffix. Bounded-channel acceptance,
+     rather than processor persistence, establishes synthetic dispatch.
+   - Obtain the initial Catchup sink sample before scanning and track its
+     ordered VSPC evidence with a private `Unknown`, `Present`, or `Removed`
+     state. Hold a page containing the marker before dispatch, refresh the
+     sample, use checked DAA-gap comparison, and immediately reconsider a
+     replacement marker already present in the held page. Keep all three
+     complete-page fallbacks independent of the rolling-marker path.
+   - Verify exact RPC and enqueue order, normalized anchor handling, multi-page
+     cursor progression, VSPC destinations within held pages, suffix retention,
+     empty VSPC results, marker presence and removal, decreasing and excessive
+     DAA gaps, immediate replacement reevaluation, each fallback independently,
+     malformed and opaque RPC results, cancellation, generation loss, channel
+     closure, and cleanup of every in-flight operation.
+
+2. Integrate the Catchup transition, notification activation, and Catchup
+   dispatch into `ProcessingSession`.
+
+   - Keep trigger selection in synchronization and lifecycle handoff in the
+     session owner. A Rebuild session retains its PP-boundary milestone and
+     cannot admit Catchup before PostSeal; a successfully prepared Resync
+     session begins with that prerequisite satisfied.
+   - On an accepted trigger, hand Catchup to `LifecycleMarker` without awaiting
+     graph delivery, send the existing VSPC and block Catchup commands with the
+     exact anchor-derived lower bounds, and then call
+     `activate_notifications`. Supply the processors' bounded notification
+     senders and a fresh reliable session fault sender directly through
+     `NotificationChannels` on the exact RPC generation.
+   - Resume held-page synthetic dispatch only after activation succeeds. Extend
+     the session observation loop with notification faults and synchronization
+     completion while retaining the existing processor and marker-worker fault
+     paths. Preserve typed NodeService outcomes and never classify behavior by
+     parsing diagnostics.
+   - Initialize one exact Catchup-only `HashSet<BlockHash>`. Insert a block hash
+     only after its synthetic channel enqueue succeeds, suppress later
+     synthetic repeats across page boundaries without granting overlap credit,
+     and clear the set on successful Live entry or session shutdown.
+   - Verify the exact marker, processor, activation, and dispatch order without
+     marker-delivery acknowledgement; both PostSeal cases; exact lower bounds;
+     activation success, rollback-complete subscription failure, and
+     generation-ending failure; notification fault delivery; absence of
+     premature held-page dispatch; retry after failed enqueue; cross-page
+     repeat filtering; graph-receiver closure; and shutdown during every
+     handoff await.
+
+3. Complete Live admission and terminal synchronization ownership.
+
+   - Retain clones of the processors' existing overlap handles within the
+     synchronization child. Read them only after the current GetBlocks page is
+     fully dispatched and while the session is PostSeal. A partial page,
+     pending VSPC change, or one-sided overlap cannot admit Live.
+   - Once admitted, stop issuing synthetic RPC work and cancel and join both
+     synthetic producers without discarding processor input already accepted.
+     Then enqueue VSPC Live, enqueue block Live, hand Live to
+     `LifecycleMarker`, clear Catchup-only accounting, and emit the reliable
+     `ProcessingSessionEvent::EnteredLive` in that order.
+   - Keep `EnteredLive` independent of graph-channel delivery. The marker worker
+     may remain blocked by channel capacity, while its FIFO still preserves
+     Catchup before Live and the session milestone proves only completed local
+     handoff.
+   - Extend consuming session shutdown to disable notification routing, cancel
+     and join active synchronization, clear held pages and Catchup accounting,
+     and only then shut down the processors and marker worker. Preserve the
+     increment-21 exact-generation release barrier and the reliable fault path
+     for unexpected synchronization termination.
+   - Verify both overlap arrival orders, repeated overlap, complete-page versus
+     partial-page admission, queued and in-flight synthetic work, exact Live
+     command order, marker-channel backpressure, `EnteredLive` after local
+     handoff but before delayed marker delivery, unexpected producer
+     termination, cancellation during RPC and bounded sends, and terminal
+     cleanup with no surviving task, channel endpoint, buffer, or generation
+     clone.
+4. Reconcile the non-normative completion status, run the full Rust validation
+   suite, push the branch, open the single-increment PR, and prepare the focused
+   review handoff. This is not a fourth production slice. Review corrections
+   remain incremental commits on this PR, and increment 23 waits for merge.
+
+Increment 22 adds no Supervisor, service-generation arbitration, recovery
+backoff, process composition, or HTTP listener. Those remain in increments 23
+and 25. It also adds no reusable session, in-place recovery-mode change, or
+alternate processor lifecycle.
 
 ## Cross-increment ordering
 

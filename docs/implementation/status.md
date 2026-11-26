@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated 25 November 2026.
+Updated 26 November 2026.
 
 The architecture bootstrap, post-handoff reconciliation, focused-document
 extraction, and two independent losslessness reviews are complete. The focused
@@ -545,7 +545,7 @@ Cargo check, 656/656 Nextest tests including Docker PostgreSQL integration and
 real loopback transport coverage, Cargo doctests, Clippy with warnings denied,
 and `git diff --check`.
 
-Implementation increment 21 is implemented on its dedicated main-based branch.
+Implementation increment 21 is implemented and merged through `95cd133`.
 Rebuild preparation passes its startup cancellation capability into one
 cancellation-aware Storage operation and consumes Storage's typed setup
 cancellation or authoritative replacement result without a caller-owned
@@ -569,3 +569,13 @@ and Supervisor remain in increments 22 and 23. Completion validation passed
 workspace formatting, Cargo check, 684/684 Nextest tests including Docker
 PostgreSQL integration, Cargo doctests, Clippy with warnings denied, and
 `git diff --check`.
+
+Implementation increment 22 is prepared on its dedicated main-based branch.
+Its planned scope is the ProcessingSession-owned normalized GetBlocks/VSPC
+pump, rolling Catchup selection and fallbacks, ordered Catchup handoff and
+notification activation, Catchup synthetic accounting, complete-page overlap
+admission, ordered Live transition, and joined synchronization teardown. The
+work is divided into three cohesive production slices: pump and trigger,
+Catchup activation and dispatch, then Live admission and shutdown. No
+production code for this increment has started. Supervisor and cross-service
+recovery arbitration remain in increment 23.

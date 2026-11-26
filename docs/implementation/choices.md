@@ -1416,3 +1416,47 @@ Launch uses the already implemented processor `initialize`, `start`, and
 consuming `shutdown` surfaces. Retain final-launch progress in the session so
 an interrupted or failed startup can consume whichever children actually
 started without inventing a rollback command or reusable actor phase.
+
+## 26 November 2026: ProcessingSession synchronization and Live transition
+
+### Private synchronization child and RPC seam
+
+Place the synchronization implementation in a private
+`processing_session::synchronization` module and keep its complete state under
+the non-reusable `ProcessingSession`. Extend the existing private, statically
+dispatched session RPC adapter with the normalized sink-sample, GetBlocks,
+VSPC, and notification-activation operations already exposed by
+`ValidatedRpcClient`. Tests use the same adapter with deterministic futures;
+do not add a public mock API, boxed futures, or a second response normalizer.
+
+Represent the active synchronization work as one session-owned child with an
+idempotent cancellation capability and retained join ownership. Any internal
+RPC producer tasks remain descendants of that child and are joined through its
+single shutdown boundary. This keeps ProcessingSession's event loop responsive
+without detaching synchronization work or adding another reusable service.
+
+### Pump buffers and Catchup bookkeeping
+
+Keep the held GetBlocks page in a `VecDeque<ValidatedNodeBlock>` so successful
+front dispatch and suffix retention do not shift a vector. Retain at most one
+pending normalized `VspcChange` beside it. Model the rolling sink observation
+with a private small enum and keep the exact Catchup-only sent-hash index in a
+`HashSet<BlockHash>`. These values are local pump bookkeeping, not new shared
+domain types or processor state.
+
+Reuse the processors' existing bounded synthetic senders, Catchup and Live
+commands, and cloneable overlap handles. Create the session notification fault
+mailbox together with the processor destinations, and give the resulting
+`NotificationChannels` directly to the exact session RPC generation during
+activation. Do not add a ProcessingSession relay for ordinary notifications or
+a second overlap synchronization primitive.
+
+### Lifecycle integration and deterministic tests
+
+Translate synchronization completion, fault, and Live admission into the
+existing ProcessingSession event path. Keep marker-worker handoff local and
+nonblocking, while synchronization cancellation and join participate in the
+session's consuming shutdown before processor shutdown. Use test-only gated
+RPC futures and the processors' existing bounded channels and overlap handles
+to force page, activation, and Live interleavings; do not introduce
+production-only barriers or sleeps for verification.
