@@ -115,6 +115,23 @@ pub(crate) enum VspcProcessorControlError {
 #[error("VspcProcessor synthetic input endpoint is closed")]
 pub(crate) struct VspcSubmissionError;
 
+/// Cloneable capability for submitting synthetic changes to one VspcProcessor.
+#[derive(Clone, Debug)]
+pub(crate) struct VspcSyntheticInput {
+    sender: BoundedSender<VspcChange>,
+}
+
+impl VspcSyntheticInput {
+    fn new(sender: BoundedSender<VspcChange>) -> Self {
+        Self { sender }
+    }
+
+    /// Submits one synthetic VSPC change and completes after bounded-channel acceptance.
+    pub(crate) async fn submit(&self, change: VspcChange) -> Result<(), VspcSubmissionError> {
+        self.sender.send(change).await.map_err(|_| VspcSubmissionError)
+    }
+}
+
 enum VspcProcessorCommand {
     Catchup { synthetic_sink_lower_bound: VspcPoint },
     Live,
@@ -156,7 +173,7 @@ impl VspcDatabase for ValidatedDbClient {
 pub(crate) struct VspcProcessor<D: VspcDatabase = ValidatedDbClient, R: VspcRpc = ValidatedRpcClient> {
     commands: mpsc::UnboundedSender<VspcProcessorCommand>,
     notifications: BoundedSender<VspcChange>,
-    synthetic: BoundedSender<VspcChange>,
+    synthetic: VspcSyntheticInput,
     overlap: VspcOverlap,
     metrics: VspcProcessorMetrics,
     attribution_cancel: watch::Sender<bool>,
@@ -184,6 +201,7 @@ impl<D: VspcDatabase, R: VspcRpc> VspcProcessor<D, R> {
             synthetic_input: synthetic_tx.metrics_source(),
             persisted_input: persisted.metrics_source(),
         };
+        let synthetic = VspcSyntheticInput::new(synthetic_tx);
         let worker = VspcProcessorWorker {
             commands: command_rx,
             notifications: notification_rx,
@@ -203,7 +221,7 @@ impl<D: VspcDatabase, R: VspcRpc> VspcProcessor<D, R> {
             Self {
                 commands: command_tx,
                 notifications: notification_tx,
-                synthetic: synthetic_tx,
+                synthetic,
                 overlap,
                 metrics,
                 attribution_cancel: attribution_cancel_tx,
@@ -233,8 +251,9 @@ impl<D: VspcDatabase, R: VspcRpc> VspcProcessor<D, R> {
         self.notifications.clone()
     }
 
-    pub(crate) async fn submit_synthetic(&self, change: VspcChange) -> Result<(), VspcSubmissionError> {
-        self.synthetic.send(change).await.map_err(|_| VspcSubmissionError)
+    /// Returns the dedicated synthetic-input capability for session synchronization.
+    pub(crate) fn synthetic_input(&self) -> VspcSyntheticInput {
+        self.synthetic.clone()
     }
 
     pub(crate) fn overlap(&self) -> VspcOverlap {
@@ -1308,11 +1327,11 @@ mod tests {
 
         for _ in 0..PROCESSING_DATA_CHANNEL_CAPACITY {
             notifications.try_send(sample.clone()).expect("notification within channel capacity");
-            processor.synthetic.try_send(sample.clone()).expect("synthetic input within channel capacity");
+            processor.synthetic.sender.try_send(sample.clone()).expect("synthetic input within channel capacity");
             persisted_tx.try_send(persisted_sample).expect("persisted input within channel capacity");
         }
         assert!(matches!(notifications.try_send(sample.clone()), Err(mpsc::error::TrySendError::Full(_))));
-        assert!(matches!(processor.synthetic.try_send(sample), Err(mpsc::error::TrySendError::Full(_))));
+        assert!(matches!(processor.synthetic.sender.try_send(sample), Err(mpsc::error::TrySendError::Full(_))));
         assert!(matches!(persisted_tx.try_send(persisted_sample), Err(mpsc::error::TrySendError::Full(_))));
 
         let expected = BoundedChannelMetricsSnapshot {
@@ -1386,7 +1405,7 @@ mod tests {
     #[tokio::test]
     async fn event_before_block_becomes_ready_from_persisted_history() {
         let Fixture { processor, mut events, persisted, mut graph, db, .. } = fixture(anchor(1));
-        processor.submit_synthetic(added(&[2])).await.expect("synthetic change");
+        processor.synthetic_input().submit(added(&[2])).await.expect("synthetic change");
         tokio::task::yield_now().await;
         assert!(db.state.lock().expect("mock DB mutex").applied.is_empty());
 
@@ -1412,7 +1431,7 @@ mod tests {
         // is still missing. Persisting block 2 makes the complete suffix ready
         // in one worker transition.
         persisted.send(persisted_block(3, 2)).await.expect("later destination");
-        processor.submit_synthetic(added(&[2])).await.expect("first synthetic change");
+        processor.synthetic_input().submit(added(&[2])).await.expect("first synthetic change");
         for _ in 0..20 {
             if processor.metrics().pending_occupancy == 1 {
                 break;
@@ -1420,7 +1439,7 @@ mod tests {
             tokio::task::yield_now().await;
         }
         assert_eq!(processor.metrics().pending_occupancy, 1);
-        processor.submit_synthetic(added(&[3])).await.expect("second synthetic change");
+        processor.synthetic_input().submit(added(&[3])).await.expect("second synthetic change");
         for _ in 0..20 {
             if processor.metrics().pending_occupancy == 2 {
                 break;
@@ -1656,7 +1675,7 @@ mod tests {
         let Fixture { processor, mut events, persisted, mut graph, db, .. } = fixture(anchor(3));
         persisted.send(persisted_block(5, 4)).await.expect("destination");
         db.push_resolution(Ok(vec![id(3), id(2), id(4), id(5)].into_boxed_slice()));
-        processor.submit_synthetic(reorg(&[3, 2, 3], &[4, 5])).await.expect("synthetic reorg");
+        processor.synthetic_input().submit(reorg(&[3, 2, 3], &[4, 5])).await.expect("synthetic reorg");
 
         assert!(matches!(
             graph.next_observation().await,
@@ -1681,7 +1700,7 @@ mod tests {
             missing: Arc::from([hash(4)]),
             identity_only: Arc::from([hash(2)]),
         }));
-        processor.submit_synthetic(reorg(&[3, 2], &[4, 5])).await.expect("synthetic reorg");
+        processor.synthetic_input().submit(reorg(&[3, 2], &[4, 5])).await.expect("synthetic reorg");
 
         assert!(matches!(
             events.recv().await,
@@ -1700,7 +1719,7 @@ mod tests {
         let Fixture { processor, mut events, persisted, graph: _graph, db, .. } = fixture(anchor(1));
         persisted.send(persisted_block(2, 1)).await.expect("source history");
         persisted.send(persisted_block(3, 2)).await.expect("destination history");
-        processor.submit_synthetic(added(&[3])).await.expect("discontinuous synthetic change");
+        processor.synthetic_input().submit(added(&[3])).await.expect("discontinuous synthetic change");
 
         assert!(matches!(
             events.recv().await,
@@ -1726,7 +1745,7 @@ mod tests {
             stored_parent: hash(9),
         })));
         rpc.push_result(Ok(node_block(hash(2), hash(1))));
-        processor.submit_synthetic(added(&[2])).await.expect("synthetic change");
+        processor.synthetic_input().submit(added(&[2])).await.expect("synthetic change");
 
         assert!(matches!(
             events.recv().await,
@@ -1748,7 +1767,7 @@ mod tests {
             stored_parent: hash(9),
         })));
         rpc.push_result(result);
-        processor.submit_synthetic(added(&[2])).await.expect("synthetic change");
+        processor.synthetic_input().submit(added(&[2])).await.expect("synthetic change");
 
         let Some(VspcProcessorEvent::Fault(fault)) = events.recv().await else {
             panic!("attribution probe must report one fault");
@@ -1801,7 +1820,7 @@ mod tests {
         })));
         rpc.push_result(Ok(node_block(hash(2), hash(1))));
         let (mut probe_started, _probe_releases) = rpc.gate_next_full_block();
-        processor.submit_synthetic(added(&[2])).await.expect("synthetic change");
+        processor.synthetic_input().submit(added(&[2])).await.expect("synthetic change");
         probe_started.recv().await.expect("attribution probe started");
         assert_eq!(db.state.lock().expect("mock DB mutex").applied.len(), 1);
 
@@ -1828,7 +1847,7 @@ mod tests {
             stored_parent: hash(9),
         })));
         rpc.push_result(Err(NodeError::Cancelled));
-        processor.submit_synthetic(added(&[2])).await.expect("synthetic change");
+        processor.synthetic_input().submit(added(&[2])).await.expect("synthetic change");
 
         assert!(matches!(
             events.recv().await,
@@ -1883,7 +1902,7 @@ mod tests {
         let Fixture { processor, mut events, persisted, graph, db, .. } = fixture(anchor(1));
         drop(graph);
         persisted.send(persisted_block(2, 1)).await.expect("destination");
-        processor.submit_synthetic(added(&[2])).await.expect("synthetic change");
+        processor.synthetic_input().submit(added(&[2])).await.expect("synthetic change");
         for _ in 0..20 {
             if db.state.lock().expect("mock DB mutex").applied.len() == 1 {
                 break;

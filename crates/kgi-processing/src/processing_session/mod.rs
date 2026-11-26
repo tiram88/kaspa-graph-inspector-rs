@@ -1,6 +1,7 @@
 mod error;
 mod marker;
 mod preparation;
+mod synchronization;
 
 use std::{future::Future, sync::Arc};
 
@@ -17,7 +18,8 @@ use tokio::sync::mpsc;
 use self::{
     error::{block_control, invalid_lifecycle, managed_component_unavailable, unexpected_worker_termination, vspc_control},
     marker::{LifecycleMarker, MarkerCompletion},
-    preparation::{PreparationDb, PreparationOutcome, PreparationRpc, StartupCancellation, prepare},
+    preparation::{PreparationDb, PreparationOutcome, PreparationRpc, StartupCancellation, node_fault, prepare},
+    synchronization::{CatchupTrigger, Synchronization, SynchronizationError, SynchronizationEvent, SynchronizationRpc},
 };
 use crate::{
     PROCESSING_DATA_CHANNEL_CAPACITY,
@@ -26,7 +28,7 @@ use crate::{
 };
 
 /// Complete node-generation capability retained by one processing session.
-pub(crate) trait SessionRpc: PreparationRpc + BlockRpc + VspcRpc {
+pub(crate) trait SessionRpc: PreparationRpc + BlockRpc + VspcRpc + SynchronizationRpc {
     /// Disables routing and both remote notification subscriptions.
     fn disable_notifications(&self) -> impl Future<Output = Result<(), NodeError>> + Send;
 }
@@ -81,9 +83,11 @@ pub(crate) struct ProcessingSession<R: SessionRpc = ValidatedRpcClient, D: Sessi
     vspc: VspcProcessor<D, R>,
     vspc_events: mpsc::UnboundedReceiver<VspcProcessorEvent>,
     marker: LifecycleMarker,
+    synchronization: Synchronization<R>,
     startup_cancellation: StartupCancellation,
     state: ProcessingSessionState,
     pp_boundary_sealed: bool,
+    pending_catchup: Option<CatchupTrigger>,
     pending_event: Option<ProcessingSessionEvent>,
 }
 
@@ -93,6 +97,7 @@ impl<R: SessionRpc, D: SessionDb> ProcessingSession<R, D> {
         let (persisted_tx, persisted_rx) = bounded_channel::<PersistedBlock>(PROCESSING_DATA_CHANNEL_CAPACITY);
         let (block, block_events) = BlockProcessor::new(mode, rpc.clone(), db.clone(), graph_updates.clone(), persisted_tx);
         let (vspc, vspc_events) = VspcProcessor::new(mode, rpc.clone(), db.clone(), graph_updates.clone(), persisted_rx);
+        let synchronization = Synchronization::new(rpc.clone(), block.synthetic_input(), vspc.synthetic_input());
         Self {
             mode,
             rpc,
@@ -102,9 +107,11 @@ impl<R: SessionRpc, D: SessionDb> ProcessingSession<R, D> {
             vspc,
             vspc_events,
             marker: LifecycleMarker::new(graph_updates),
+            synchronization,
             startup_cancellation: StartupCancellation::new(),
             state: ProcessingSessionState::Inert,
             pp_boundary_sealed: false,
+            pending_catchup: None,
             pending_event: None,
         }
     }
@@ -150,6 +157,7 @@ impl<R: SessionRpc, D: SessionDb> ProcessingSession<R, D> {
             return ProcessingSessionStartOutcome::Failed(vspc_control(error));
         }
         self.marker.start();
+        self.synchronization.start(prepared.anchor);
 
         if genesis_rebuild {
             let event = self.block_events.try_recv();
@@ -197,6 +205,20 @@ impl<R: SessionRpc, D: SessionDb> ProcessingSession<R, D> {
                 }
                 event = self.block_events.recv() => return self.handle_block_event(event),
                 event = self.vspc_events.recv() => return self.handle_vspc_event(event),
+                event = self.synchronization.next_event() => {
+                    match event {
+                        Some(SynchronizationEvent::CatchupReady(trigger)) => {
+                            assert!(self.pending_catchup.replace(trigger).is_none(), "synchronization reports Catchup eligibility once");
+                            continue;
+                        }
+                        Some(SynchronizationEvent::Failed(error)) => return Some(ProcessingSessionEvent::Fault(synchronization_fault(error))),
+                        None => {
+                            return Some(ProcessingSessionEvent::Fault(unexpected_worker_termination(
+                                "synchronization task terminated unexpectedly",
+                            )));
+                        }
+                    }
+                }
             }
         }
     }
@@ -232,17 +254,28 @@ impl<R: SessionRpc, D: SessionDb> ProcessingSession<R, D> {
             vspc,
             vspc_events,
             marker,
+            synchronization,
             startup_cancellation,
             state,
             pp_boundary_sealed,
+            pending_catchup,
             pending_event,
             ..
         } = self;
         let _ = rpc.disable_notifications().await;
+        synchronization.shutdown().await;
         let (_block_result, _vspc_result) = tokio::join!(block.shutdown(), vspc.shutdown());
         let _ = marker.shutdown().await;
         drop((rpc, db));
-        drop((block_events, vspc_events, startup_cancellation, state, pp_boundary_sealed, pending_event));
+        drop((block_events, vspc_events, startup_cancellation, state, pp_boundary_sealed, pending_catchup, pending_event));
+    }
+}
+
+fn synchronization_fault(error: SynchronizationError) -> ComponentFault {
+    match error {
+        SynchronizationError::Node(error) => node_fault(error),
+        SynchronizationError::BlockInputClosed => managed_component_unavailable(Component::BlockProcessor),
+        SynchronizationError::VspcInputClosed => managed_component_unavailable(Component::VspcProcessor),
     }
 }
 
@@ -334,6 +367,24 @@ mod tests {
     impl VspcRpc for MockRpc {
         async fn full_block(&self, hash: BlockHash) -> Result<ValidatedNodeBlock, NodeError> {
             Err(NodeError::BlockNotFound { hash })
+        }
+    }
+
+    impl SynchronizationRpc for MockRpc {
+        fn catchup_max_daa_gap(&self) -> u64 {
+            10
+        }
+
+        async fn catchup_sink_sample(&self) -> Result<kgi_node::rpc::CatchupSinkSample, NodeError> {
+            std::future::pending().await
+        }
+
+        async fn get_blocks(&self, _low_hash: BlockHash) -> Result<Vec<ValidatedNodeBlock>, NodeError> {
+            std::future::pending().await
+        }
+
+        async fn virtual_chain_from(&self, _low_hash: BlockHash) -> Result<kgi_model::vspc::VspcChange, NodeError> {
+            std::future::pending().await
         }
     }
 

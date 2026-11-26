@@ -18,7 +18,8 @@ mod processor;
 pub(crate) use dependency::DependencyRpc;
 #[allow(unused_imports, reason = "consumed by the upcoming ProcessingSession integration point")]
 pub(crate) use processor::{
-    BlockOverlap, BlockProcessor, BlockProcessorControlError, BlockProcessorEvent, BlockProcessorMetricsSnapshot, BlockSubmissionError,
+    BlockOverlap, BlockProcessor, BlockProcessorControlError, BlockProcessorEvent, BlockProcessorMetricsSnapshot,
+    BlockSubmissionError, BlockSyntheticInput,
 };
 
 #[derive(Debug)]

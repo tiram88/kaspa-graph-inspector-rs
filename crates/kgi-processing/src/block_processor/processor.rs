@@ -112,6 +112,23 @@ pub(crate) enum BlockProcessorControlError {
 #[error("BlockProcessor synthetic input endpoint is closed")]
 pub(crate) struct BlockSubmissionError;
 
+/// Cloneable capability for submitting synthetic blocks to one BlockProcessor.
+#[derive(Clone, Debug)]
+pub(crate) struct BlockSyntheticInput {
+    sender: BoundedSender<ValidatedNodeBlock>,
+}
+
+impl BlockSyntheticInput {
+    fn new(sender: BoundedSender<ValidatedNodeBlock>) -> Self {
+        Self { sender }
+    }
+
+    /// Submits one synthetic block and completes after bounded-channel acceptance.
+    pub(crate) async fn submit(&self, block: ValidatedNodeBlock) -> Result<(), BlockSubmissionError> {
+        self.sender.send(block).await.map_err(|_| BlockSubmissionError)
+    }
+}
+
 enum BlockProcessorCommand {
     Catchup { known_id_lower_bound: CompactId },
     Live,
@@ -124,7 +141,7 @@ pub(crate) struct BlockProcessor<
 > {
     commands: mpsc::UnboundedSender<BlockProcessorCommand>,
     notifications: BoundedSender<ValidatedNodeBlock>,
-    synthetic: BoundedSender<ValidatedNodeBlock>,
+    synthetic: BlockSyntheticInput,
     overlap: BlockOverlap,
     metrics: BlockProcessorMetrics,
     worker: Option<BlockProcessorWorker<D, R>>,
@@ -154,6 +171,7 @@ impl<D: BlockDatabase, R: BlockRpc> BlockProcessor<D, R> {
             orphan_input: orphan.input_metrics_source(),
             dependency: orphan.resolver_metrics_source(),
         };
+        let synthetic = BlockSyntheticInput::new(synthetic_tx);
         let worker = BlockProcessorWorker {
             commands: command_rx,
             notifications: notification_rx,
@@ -173,7 +191,7 @@ impl<D: BlockDatabase, R: BlockRpc> BlockProcessor<D, R> {
         let processor = Self {
             commands: command_tx,
             notifications: notification_tx,
-            synthetic: synthetic_tx,
+            synthetic,
             overlap,
             metrics,
             worker: Some(worker),
@@ -205,8 +223,9 @@ impl<D: BlockDatabase, R: BlockRpc> BlockProcessor<D, R> {
         self.notifications.clone()
     }
 
-    pub(crate) async fn submit_synthetic(&self, block: ValidatedNodeBlock) -> Result<(), BlockSubmissionError> {
-        self.synthetic.send(block).await.map_err(|_| BlockSubmissionError)
+    /// Returns the dedicated synthetic-input capability for session synchronization.
+    pub(crate) fn synthetic_input(&self) -> BlockSyntheticInput {
+        self.synthetic.clone()
     }
 
     pub(crate) fn overlap(&self) -> BlockOverlap {
@@ -1118,10 +1137,10 @@ mod tests {
 
         for _ in 0..PROCESSING_DATA_CHANNEL_CAPACITY {
             notification.try_send(sample.clone()).expect("notification within channel capacity");
-            processor.synthetic.try_send(sample.clone()).expect("synthetic input within channel capacity");
+            processor.synthetic.sender.try_send(sample.clone()).expect("synthetic input within channel capacity");
         }
         assert!(matches!(notification.try_send(sample.clone()), Err(mpsc::error::TrySendError::Full(_))));
-        assert!(matches!(processor.synthetic.try_send(sample), Err(mpsc::error::TrySendError::Full(_))));
+        assert!(matches!(processor.synthetic.sender.try_send(sample), Err(mpsc::error::TrySendError::Full(_))));
 
         let expected = BoundedChannelMetricsSnapshot {
             current_occupancy: PROCESSING_DATA_CHANNEL_CAPACITY,
@@ -1186,12 +1205,12 @@ mod tests {
         db.push_materialization(Ok(MaterializeBlockOutcome::Inserted { committed: committed(&below, id(4)) }));
         db.push_presence(Ok(BlockPresence::Absent));
         db.push_materialization(Ok(MaterializeBlockOutcome::Inserted { committed: committed(&sealing, id(5)) }));
-        processor.submit_synthetic(below.clone()).await.expect("below-threshold block");
+        processor.synthetic_input().submit(below.clone()).await.expect("below-threshold block");
         assert_eq!(persisted.recv().await.map(|block| block.point.hash()), Some(below.hash));
         assert!(graph_rx.try_recv_update().is_err());
         assert!(events.try_recv().is_err());
 
-        processor.submit_synthetic(sealing.clone()).await.expect("sealing block");
+        processor.synthetic_input().submit(sealing.clone()).await.expect("sealing block");
         assert_eq!(persisted.recv().await.map(|block| block.point.hash()), Some(sealing.hash));
         assert_eq!(events.recv().await, Some(BlockProcessorEvent::PpBoundarySealed));
         assert!(graph_rx.try_recv_update().is_err());
@@ -1222,7 +1241,7 @@ mod tests {
         tokio::task::yield_now().await;
 
         processor.block_notification_sender().send(late).await.expect("late notification");
-        processor.submit_synthetic(shared.clone()).await.expect("synthetic block");
+        processor.synthetic_input().submit(shared.clone()).await.expect("synthetic block");
         processor.block_notification_sender().send(shared.clone()).await.expect("overlap notification");
         processor.block_notification_sender().send(shared.clone()).await.expect("duplicate notification");
 
@@ -1271,7 +1290,7 @@ mod tests {
             identity_only: Arc::from([hash(8)]),
         }));
         processor.catchup(id(1)).expect("Catchup command");
-        processor.submit_synthetic(incoming).await.expect("synthetic block");
+        processor.synthetic_input().submit(incoming).await.expect("synthetic block");
 
         assert!(matches!(
             events.recv().await,
@@ -1297,7 +1316,7 @@ mod tests {
             fixture(genesis, RecoveryMode::Resync, anchor(genesis, 20), 10, graph);
         db.push_presence(Ok(BlockPresence::Absent));
         db.push_materialization(Ok(MaterializeBlockOutcome::Inserted { committed: committed(&incoming, id(4)) }));
-        processor.submit_synthetic(incoming.clone()).await.expect("synthetic block");
+        processor.synthetic_input().submit(incoming.clone()).await.expect("synthetic block");
 
         assert_eq!(persisted.recv().await.map(|block| block.point.hash()), Some(incoming.hash));
         assert!(events.try_recv().is_err());
@@ -1321,7 +1340,7 @@ mod tests {
             missing: Arc::from([hash(7)]),
             identity_only: Arc::from([]),
         }));
-        processor.submit_synthetic(incoming).await.expect("synthetic block");
+        processor.synthetic_input().submit(incoming).await.expect("synthetic block");
 
         assert!(matches!(
             events.recv().await,
@@ -1353,7 +1372,7 @@ mod tests {
             assert_eq!(filler.offer_block_committed(filler_update.clone()), Ok(GraphUpdateOfferOutcome::Enqueued));
         }
 
-        processor.submit_synthetic(incoming.clone()).await.expect("synthetic block");
+        processor.synthetic_input().submit(incoming.clone()).await.expect("synthetic block");
 
         assert_eq!(persisted.recv().await.map(|block| block.point.hash()), Some(incoming.hash));
         assert_eq!(graph_rx.gap_generation(), 1);
@@ -1375,7 +1394,7 @@ mod tests {
             }));
         }
         processor.catchup(id(1)).expect("Catchup command");
-        processor.submit_synthetic(shared.clone()).await.expect("synthetic block");
+        processor.synthetic_input().submit(shared.clone()).await.expect("synthetic block");
         processor.block_notification_sender().send(shared).await.expect("notification block");
         persisted.recv().await.expect("synthetic persisted block");
         persisted.recv().await.expect("notification persisted block");
@@ -1402,7 +1421,7 @@ mod tests {
         db.push_materialization(Err(MaterializeBlockError::Database(ProcessingDbError::Persistence(
             PersistenceFault::AmbiguousCommit,
         ))));
-        processor.submit_synthetic(sealing).await.expect("sealing block");
+        processor.synthetic_input().submit(sealing).await.expect("sealing block");
 
         assert!(matches!(
             events.recv().await,
@@ -1428,10 +1447,10 @@ mod tests {
             fixture(genesis, RecoveryMode::Resync, anchor(genesis, 20), 10, graph);
         db.push_presence(Ok(BlockPresence::Materialized { id: id(4), coordinate: BlockCoordinate::new(1, 0).expect("coordinate") }));
         let (mut started, releases) = db.gate_next_presence();
-        processor.submit_synthetic(first.clone()).await.expect("first input");
+        processor.synthetic_input().submit(first.clone()).await.expect("first input");
         started.recv().await.expect("first database operation started");
         for value in 5..25 {
-            processor.submit_synthetic(block(hash(value), u64::from(value))).await.expect("queued input");
+            processor.synthetic_input().submit(block(hash(value), u64::from(value))).await.expect("queued input");
         }
         let shutting_down = tokio::spawn(processor.shutdown());
         tokio::task::yield_now().await;
@@ -1520,7 +1539,7 @@ mod tests {
         processor.initialize(anchor(genesis, 4), 0).expect("BlockProcessor initialization");
         processor.start().expect("BlockProcessor start");
 
-        processor.submit_synthetic(inserted.clone()).await.expect("inserted block");
+        processor.synthetic_input().submit(inserted.clone()).await.expect("inserted block");
 
         assert!(matches!(
             graph_rx.next_observation().await,
@@ -1574,7 +1593,8 @@ mod tests {
                 identity_only: Arc::from([]),
             }));
             processor
-                .submit_synthetic(block(indexed_hash(value + 1_000), u64::try_from(value).expect("orphan test index fits u64")))
+                .synthetic_input()
+                .submit(block(indexed_hash(value + 1_000), u64::try_from(value).expect("orphan test index fits u64")))
                 .await
                 .expect("orphan block");
         }

@@ -3024,11 +3024,13 @@ name = "kgi-processing"
 version = "0.1.0"
 dependencies = [
  "kaspa-consensus-core",
+ "kaspa-core",
  "kgi-api-ingress",
  "kgi-core",
  "kgi-model",
  "kgi-node",
  "kgi-storage",
+ "log",
  "thiserror 2.0.21",
  "tokio",
  "tokio-util",

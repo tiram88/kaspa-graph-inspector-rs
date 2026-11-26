@@ -243,7 +243,7 @@ fn threshold_fault(error: BoundarySealThresholdError) -> ComponentFault {
     }
 }
 
-fn node_fault(error: NodeError) -> ComponentFault {
+pub(super) fn node_fault(error: NodeError) -> ComponentFault {
     let diagnostic = Arc::from(error.to_string());
     let (disposition, kind) = match error {
         NodeError::GenerationLost => (FaultDisposition::Retry, FaultKind::ServiceGenerationLost(ServiceKind::Node)),
