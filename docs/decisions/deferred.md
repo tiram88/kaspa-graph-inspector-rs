@@ -16,10 +16,12 @@ become durable project constraints.
 5. Exact metrics export and labels, tracing, event-to-log-level assignments,
    the fixed aggregate logging cadences, operational endpoints, file-log
    rotation size and retained archive count, service hardening directives, and
-   concrete container base images. Required v2 operational event coverage,
-   relative severity, bounded-work summaries, periodic aggregation,
-   processing-latency acceptance, and the deployment layout remain settled in
-   their focused owners.
+   concrete container base images. Required v2 process logging and browser
+   operational observation remain settled in
+   [Overview](../architecture/overview.md#deployment-and-logging--settled) and
+   [Web](../architecture/web.md#operational-observation--settled);
+   processing-latency acceptance and deployment retain their existing focused
+   owners.
 6. Exhaustive parity matrix and additional fixtures beyond the required
     [verification baseline](../architecture/verification.md).
 Unlisted code-level choices remain implementation details only while they
